@@ -165,13 +165,13 @@ class GraspPolicy(Policy):
     def _generate_action_sequence(self, grasp, obs):
         """
         生成完整的抓取动作序列
-        
+
         Args:
-            grasp: 选中的抓取字典
-            obs: 当前观测
-            
+            grasp (dict): 选中的抓取字典
+            obs (dict): 当前观测信息
+
         Returns:
-            动作序列列表
+            list: 动作序列列表，每个元素为动作字典
         """
 
         actions = []
