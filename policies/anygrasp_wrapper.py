@@ -134,8 +134,55 @@ class AnyGraspWrapper:
                 - width: 夹爪宽度
                 - score: 抓取评分
         """
-        # TODO: 后续实现
-        pass
+
+        if len(gg) == 0:
+            logger.warning("GraspGroup 对象为空")
+            return []
+        
+        # 限制抓取数量
+        # num_grasps = min(len(gg), max_grasps)
+        num_grasps = len(gg) # 未知抓取数量对最终性能的影响，此处暂时保留全部抓取
+        logger.info(f"解析 {num_grasps} 个抓取候选")
+        
+        # 获取三维坐标数据
+        positions = gg.translations[:num_grasps]
+        
+        # 获取旋转矩阵
+        rotation_matrices = gg.rotation_matrices[:num_grasps]
+        
+        # 获取夹爪宽度
+        widths = gg.widths[:num_grasps]
+        
+        # 获取深度
+        depths = gg.depths[:num_grasps]
+        
+        # 获取抓取分数
+        scores = gg.scores[:num_grasps]
+        
+        # 逐个处理每个抓取
+        grasp_list = []
+        
+        for i in range(num_grasps):
+            # 获取接近方向
+            approach_direction = rotation_matrices[i][:, 2] # 此处未知旋转矩阵的构建规则，假设是旋转变换矩阵
+            
+            # 归一化接近方向为单位向量
+            approach_direction = approach_direction / np.linalg.norm(approach_direction)
+            
+            # 构造抓取字典
+            grasp_dict = {
+                'position': positions[i].copy(),          # 三维坐标
+                'approach_direction': approach_direction, # 接近方向
+                'angle': 0.0,                             # 角度，后续明确旋转矩阵构造后可从中计算得欧拉角
+                'width': float(widths[i]),                # 宽度
+                'score': float(scores[i])                 # 抓取分数
+            }
+            
+            # 添加到列表
+            grasp_list.append(grasp_dict)
+        
+        logger.info(f"成功将 {len(grasp_list)} 个抓取处理为字典")
+        return grasp_list
     
     def predict(self, rgb, depth):
         """
