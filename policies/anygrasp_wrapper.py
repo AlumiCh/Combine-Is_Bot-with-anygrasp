@@ -195,7 +195,6 @@ class AnyGraspWrapper:
 
         Returns:
             GraspGroup: AnyGrasp 返回的抓取组对象（已排序和NMS处理）
-                       TODO: 后续改为返回 List[dict] 格式
         """
         
         # 生成点云
