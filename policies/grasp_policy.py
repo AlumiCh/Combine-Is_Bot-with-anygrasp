@@ -4,19 +4,231 @@
 功能：实现完整的抓取控制流程
 """
 import numpy as np
-# 注意：需要从 policies.py 导入 Policy 基类
+import sys
+import os
+import logging
 
-class GraspPolicy:  # 继承 Policy
-    def __init__(self, anygrasp_model_path=None, ...):
-        """初始化自动抓取策略"""
-        # TODO: 初始化 AnyGraspWrapper 和 GraspConverter
-        pass
-    
+# 导入 Policy 基类
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, parent_dir)
+from policies import Policy
+
+from ik_solver import IKSolver
+from policies.anygrasp_wrapper import AnyGraspWrapper
+from robot_controller.grasp_converter import GraspConverter
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class GraspPolicy(Policy):
+    def __init__(self, 
+                 anygrasp_model_path,
+                 camera_intrinsics,
+                 camera_to_base_transform,
+                 workspace_limits,
+                 ik_solver=None):
+        """
+        初始化自动抓取策略
+
+        Args:
+            anygrasp_model_path (str): AnyGrasp 模型权重文件路径
+            camera_intrinsics (dict): 相机内参字典，包含 'fx', 'fy', 'cx', 'cy', 'scale' 等
+            camera_to_base_transform (np.ndarray): 相机到机器人基坐标系的 4x4 变换矩阵
+            workspace_limits (list or np.ndarray): 工作空间限制，格式为 [[xmin, xmax], [ymin, ymax], [zmin, zmax]]
+            ik_solver (IKSolver, optional): 逆运动学求解器实例
+        """
+
+        # 初始化接口封装对象
+        self.anygrasp = AnyGraspWrapper(anygrasp_model_path, 
+                                        camera_intrinsics,
+                                        workspace_limits,
+                                        )
+        
+        # 初始化坐标系转换器对象
+        self.converter = GraspConverter(camera_intrinsics,
+                                        camera_to_base_transform)
+        
+        # 初始化IK求解器对象
+        self.ik_solver = ik_solver
+        
+        # 状态变量
+        self.state = 'WAITING'  # 当前状态
+        self.action_sequence = []  # 动作序列
+        self.action_index = 0  # 当前执行到的动作索引
+        self.selected_grasp = None  # 选中的抓取
+            
     def reset(self):
         """重置策略状态"""
-        pass
+        self.state = 'WAITING'
+        self.action_sequence = []
+        self.action_index = 0
+        self.selected_grasp = None
+        
+        logger.info("GraspPolicy 已重置")
     
     def step(self, obs):
-        """执行一步抓取策略"""
-        # TODO: 实现抓取流程
-        pass
+        """
+        执行一步自动抓取
+
+        Args:
+            obs (dict): 环境观测字典，具体定义结构需要拿到相机才能确定
+
+        Returns:
+            dict or str: 动作字典或控制命令
+        """
+
+        # 状态机逻辑
+        if self.state == 'WAITING':
+            return self._state_waiting(obs)
+        elif self.state == 'DETECTING':
+            return self._state_detecting(obs)
+        elif self.state == 'EXECUTING':
+            return self._state_executing(obs)
+        elif self.state == 'COMPLETED':
+            return 'end_episode' # 返回结束信号
+    
+    def _state_waiting(self, obs):
+        """等待状态 - 确认开始"""
+
+        logger.info("开始抓取检测")
+        self.state = 'DETECTING'
+        return None
+    
+    def _state_detecting(self, obs):
+        """检测状态 - 执行抓取检测"""
+        
+        # 从 obs 提取 RGB-D 图像
+        if 'wrist_rgb' not in obs or 'wrist_depth' not in obs:
+            logger.error("观测中缺少 RGB-D 图像")
+            self.state = 'COMPLETED'
+            return 'end_episode'
+        
+        rgb = obs['wrist_rgb']
+        depth = obs['wrist_depth']
+        
+        # 调用 AnyGrasp 检测
+        grasps = self.anygrasp.predict(rgb, depth)
+        
+        # 解析抓取为字典
+        grasp_list = self.anygrasp._parse_grasp_group(grasps)
+        
+        # 遍历候选抓取
+        selected_grasp = self._select_reachable_grasp(grasp_list)
+        
+        if selected_grasp is None:
+            logger.warning("没有找到可达的抓取点")
+            self.state = 'COMPLETED'
+            return 'end_episode'
+        
+        # 生成动作序列
+        self.selected_grasp = selected_grasp
+        self.action_sequence = self._generate_action_sequence(selected_grasp, obs)
+        self.action_index = 0
+        self.state = 'EXECUTING'
+        
+        logger.info(f"已选择抓取，分数: {selected_grasp['score']:.3f}")
+        
+        # 返回第一个动作
+        return self._state_executing(obs)
+    
+    def _select_reachable_grasp(self, grasp_list):
+        """
+        遍历抓取候选并筛选
+
+        Args:
+            grasp_list (list): 抓取候选列表，每个元素为抓取字典
+
+        Returns:
+            dict or None: 选中的抓取字典（包含可达末端位姿），若无可达抓取则返回 None
+        """
+
+        # 遍历抓取候选
+        for i, grasp in enumerate(grasp_list):
+            logger.debug(f"尝试第 {i+1} 个抓取，分数: {grasp['score']:.3f}")
+            
+            # 转换为末端位姿
+            position, quaternion = self.converter.grasp_to_ee_pose(grasp)
+            
+            # 验证可达性
+            reachable = self.converter.verify_reachability(position, quaternion, self.ik_solver)
+            
+            if reachable:
+                logger.info(f"找到可达抓取: 第 {i+1} 个")
+                # 将转换后的位姿保存到抓取字典中
+                grasp['ee_position'] = position
+                grasp['ee_quaternion'] = quaternion
+                return grasp
+        
+        return None
+    
+    def _generate_action_sequence(self, grasp, obs):
+        """
+        生成完整的抓取动作序列
+        
+        Args:
+            grasp: 选中的抓取字典
+            obs: 当前观测
+            
+        Returns:
+            动作序列列表
+        """
+
+        actions = []
+        
+        # 动作1 - 打开夹爪
+        actions.append({
+            'arm_pos': obs['arm_pos'].copy(),
+            'arm_quat': obs['arm_quat'].copy(),
+            'gripper_pos': np.array([1.0])
+        })
+        
+        # 动作2 - 移动到接近位置
+        actions.append({
+            'arm_pos': grasp['ee_position'].copy(),
+            'arm_quat': grasp['ee_quaternion'].copy(),
+            'gripper_pos': np.array([1.0])
+        })
+        
+        # 动作3 - 闭合夹爪
+        actions.append({
+            'arm_pos': grasp['ee_position'].copy(),
+            'arm_quat': grasp['ee_quaternion'].copy(),
+            'gripper_pos': np.array([0.0])
+        })
+        
+        # 动作4 - 提升物体
+        lift_pos = grasp['ee_position'].copy()
+        lift_pos[2] += 0.1
+        actions.append({
+            'arm_pos': lift_pos,
+            'arm_quat': grasp['ee_quaternion'].copy(),
+            'gripper_pos': np.array([0.0])
+        })
+        
+        return actions
+    
+    def _state_executing(self, obs):
+        """执行状态 - 执行动作序列"""
+
+        if self.action_index >= len(self.action_sequence):
+            # 所有动作执行完毕
+            logger.info("抓取动作序列执行完成")
+            self.state = 'COMPLETED'
+            return 'end_episode'
+        
+        # 获取当前动作
+        action = self.action_sequence[self.action_index]
+        logger.debug(f"执行动作 {self.action_index + 1}/{len(self.action_sequence)}")
+        
+        # 更新索引
+        self.action_index += 1
+        
+        return action
+
+
+# 测试代码
+if __name__ == '__main__':
+    # TODO: 创建测试用的策略
+    # 需要准备模型路径、相机参数等
+    pass
