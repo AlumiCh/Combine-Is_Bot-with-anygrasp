@@ -1,6 +1,6 @@
 # Update: 2025-03-19
 
-from cameras import KinovaCamera, LogitechCamera
+from cameras import KinovaCamera, LogitechCamera, RealSenseCamera
 from configs.constants import BASE_RPC_HOST, BASE_RPC_PORT, ARM_RPC_HOST, ARM_RPC_PORT, RPC_AUTHKEY
 from configs.constants import BASE_CAMERA_SERIAL
 from arm_server import ArmManager 
@@ -43,6 +43,7 @@ class RealEnv:
         # 相机
         # self.base_camera = LogitechCamera(BASE_CAMERA_SERIAL)
         # self.wrist_camera = KinovaCamera()
+        self.global_camera = RealSenseCamera()
 
     def get_obs(self):
         """
@@ -52,10 +53,14 @@ class RealEnv:
             dict: 包含底座状态、手臂状态和相机图像的字典。
         """
         obs = {}
-        # obs.update(self.base.get_state())
         obs.update(self.arm.get_state())
-        # obs['base_image'] = self.base_camera.get_image()
-        # obs['wrist_image'] = self.wrist_camera.get_image()
+        
+        # 获取 RGB-D 数据
+        wrist_rgb, wrist_depth = self.global_camera.get_rgb_depth()
+        obs['wrist_rgb'] = wrist_rgb      # [H, W, 3] uint8
+        obs['wrist_depth'] = wrist_depth  # [H, W] float32, 单位：米
+        obs['wrist_intrinsics'] = self.global_camera.get_intrinsics()  # 相机内参字典
+        
         return obs
 
     def reset(self):
@@ -91,6 +96,7 @@ class RealEnv:
         """
         # self.base.close()
         self.arm.close()
+        self.global_camera.close()
         # self.base_camera.close()
         # self.wrist_camera.close()
 
