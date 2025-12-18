@@ -202,6 +202,7 @@ def demo_from_file(data_dir):
 
 def demo_from_camera():
     """演示：从 RealSense 相机实时抓取检测"""
+    
     print("初始化相机")
     camera = RealSenseCamera(resolution=(640, 480), fps=30)
 
