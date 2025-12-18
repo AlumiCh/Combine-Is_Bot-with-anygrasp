@@ -3,11 +3,16 @@ import threading
 import time
 import cv2 as cv
 import numpy as np
+import pyrealsense2 as rs
+import logging
 from kortex_api.autogen.client_stubs.DeviceManagerClientRpc import DeviceManagerClient
 from kortex_api.autogen.client_stubs.VisionConfigClientRpc import VisionConfigClient
 from kortex_api.autogen.messages import DeviceConfig_pb2, VisionConfig_pb2
 from robot_controller.gen3.kinova import DeviceConnection
 from configs.constants import BASE_CAMERA_SERIAL
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class Camera:
     def __init__(self):
@@ -146,25 +151,230 @@ class KinovaCamera(Camera):
             sensor_focus_action.focus_action = VisionConfig_pb2.FOCUSACTION_SET_MANUAL_FOCUS
             sensor_focus_action.manual_focus.value = 0
             vision_config.DoSensorFocusAction(sensor_focus_action, vision_device_id)
+            
+class RealSenseCamera(Camera):
+    """
+    RealSense D435i 相机封装类
+
+    功能:
+        - 采集 RGB 和深度图像
+        - 提供相机内参
+        - 支持多线程后台采集
+    """
+    
+    def __init__(self, resolution=(640, 480), fps=30, 
+                 enable_infrared=False, device_serial=None):
+        """
+        初始化 RealSense 相机
+
+        Args:
+            resolution (tuple): 分辨率 (width, height)，默认 (640, 480)
+            fps (int): 帧率，默认 30
+            device_serial (str, optional): 设备序列号
+        """
+
+        # 保存参数
+        self.resolution = resolution
+        self.fps = fps
+        
+        # pyrealsense2 组件
+        self.pipeline = rs.pipeline()
+        self.config = rs.config()
+        self.depth_scale = None
+
+        # 数据存储
+        self.depth = None
+        self.intrinsics = None
+
+        # 配置 RGB 流
+        width, height = resolution
+        self.config.enable_stream(
+            rs.stream.color,           # 流类型：彩色
+            width, height,             # 分辨率
+            rs.format.bgr8,            # 格式：BGR8
+            fps                        # 帧率
+        )
+
+        # 配置深度流
+        self.config.enable_stream(
+            rs.stream.depth,           # 流类型：深度
+            width, height,             # 分辨率
+            rs.format.z16,             # 格式：16位深度
+            fps                        # 帧率
+        )
+
+        # 如果有指定设备序列号的话
+        if device_serial is not None:
+            self.config.enable_device(device_serial)
+
+        # 启动pipeline
+        profile = self.pipeline.start(self.config)
+
+        # 获取深度传感器和 depth_scale
+        depth_sensor = profile.get_device().first_depth_sensor()
+        self.depth_scale = depth_sensor.get_depth_scale()
+        logger.info(f"[RealSenseCamera] Depth scale: {self.depth_scale}")
+
+        # 获取 RGB 流的相机内参
+        color_stream = profile.get_stream(rs.stream.color)
+        intrinsics_data = color_stream.as_video_stream_profile().get_intrinsics()
+
+        # 存储内参为字典
+        self.intrinsics = {
+            'fx': intrinsics_data.fx,
+            'fy': intrinsics_data.fy,
+            'cx': intrinsics_data.ppx,
+            'cy': intrinsics_data.ppy,
+            'width': intrinsics_data.width,
+            'height': intrinsics_data.height,
+            'distortion': list(intrinsics_data.coeffs)  # 畸变系数
+        }
+        logger.info(f"[RealSenseCamera] 相机内参: fx={self.intrinsics['fx']:.2f}, fy={self.intrinsics['fy']:.2f}")
+
+        super().__init__()
+
+    def camera_worker(self):
+        """ 后台线程工作函数，持续采集 RGB-D 数据 """
+        
+        while True:
+            # 控制帧率
+            while time.time() - self.last_read_time < 0.0333:
+                time.sleep(0.0001)
+            
+            try:
+                # 等待并获取一帧数据
+                frames = self.pipeline.wait_for_frames()
+                
+                # 提取彩色帧
+                color_frame = frames.get_color_frame()
+                
+                # 提取深度帧
+                depth_frame = frames.get_depth_frame()
+                
+                # 检查帧是否有效
+                if not color_frame or not depth_frame:
+                    continue
+                
+                # 转换为 NumPy 数组
+                bgr_image = np.asanyarray(color_frame.get_data())
+                depth_image = np.asanyarray(depth_frame.get_data())
+                
+                # 将 BGR 转换为 RGB 
+                rgb_image = cv.cvtColor(bgr_image, cv.COLOR_BGR2RGB)
+                
+                # 将深度值转换为米
+                depth_image = depth_image.astype(np.float32)
+                depth_image = depth_image * self.depth_scale
+                
+                # 更新数据
+                self.image = rgb_image
+                self.depth = depth_image
+                self.last_read_time = time.time()
+                
+            except Exception as e:
+                logger.error(f"[RealSenseCamera] 采集帧失败: {e}")
+                time.sleep(0.1)
+
+    def get_depth(self):
+        """
+        获取最新的深度图
+        
+        Returns:
+            np.ndarray: [H, W] 深度图，float32，单位：米
+        """
+
+        return self.depth
+    
+    def get_intrinsics(self):
+        """
+        获取相机内参
+        
+        Returns:
+            dict: 包含 fx, fy, cx, cy, width, height, distortion
+        """
+
+        return self.intrinsics
+    
+    def get_rgb_depth(self):
+        """
+        同时获取 RGB 和深度图
+        
+        Returns:
+            tuple: (rgb, depth)
+                - rgb: [H, W, 3] RGB图像，uint8
+                - depth: [H, W] 深度图，float32，单位：米
+        """
+
+        return self.image, self.depth
+    
+    def close(self):
+        """ 关闭 RealSense 相机并释放资源 """
+        
+        try:
+            self.pipeline.stop()
+            logger.info("[RealSenseCamera] 相机已关闭")
+        except Exception as e:
+            logger.warning(f"[RealSenseCamera] 关闭相机时出现警告: {e}")
+
 
 if __name__ == '__main__':
-    base_camera = LogitechCamera(BASE_CAMERA_SERIAL)
-    wrist_camera = KinovaCamera()
+    ###############
+    # 以下为原代码 #
+    ###############
+    # base_camera = LogitechCamera(BASE_CAMERA_SERIAL)
+    # wrist_camera = KinovaCamera()
+    # try:
+    #     while True:
+    #         base_image = base_camera.get_image()
+    #         wrist_image = wrist_camera.get_image()
+    #         cv.imshow('base_image', cv.cvtColor(base_image, cv.COLOR_RGB2BGR))
+    #         cv.imshow('wrist_image', cv.cvtColor(wrist_image, cv.COLOR_RGB2BGR))
+    #         key = cv.waitKey(1)
+    #         if key == ord('s'):  # Save image
+    #             base_image_path = f'base-image-{int(10 * time.time()) % 100000000}.jpg'
+    #             cv.imwrite(base_image_path, cv.cvtColor(base_image, cv.COLOR_RGB2BGR))
+    #             print(f'Saved image to {base_image_path}')
+    #             wrist_image_path = f'wrist-image-{int(10 * time.time()) % 100000000}.jpg'
+    #             cv.imwrite(wrist_image_path, cv.cvtColor(wrist_image, cv.COLOR_RGB2BGR))
+    #             print(f'Saved image to {wrist_image_path}')
+    # finally:
+    #     base_camera.close()
+    #     wrist_camera.close()
+    #     cv.destroyAllWindows()
+
+    ###########################
+    # 以下为D435i相机的测试代码 #
+    ###########################
+
+    # 创建相机对象
+    d435i = RealSenseCamera()
+
     try:
         while True:
-            base_image = base_camera.get_image()
-            wrist_image = wrist_camera.get_image()
-            cv.imshow('base_image', cv.cvtColor(base_image, cv.COLOR_RGB2BGR))
-            cv.imshow('wrist_image', cv.cvtColor(wrist_image, cv.COLOR_RGB2BGR))
+            # 获取 RGB 图像和深度图
+            rgb, depth = d435i.get_rgb_depth()
+            
+            # 检查数据有效性
+            if rgb is None or depth is None:
+                time.sleep(0.1)
+                continue
+
+            # 深度图可视化
+            # 方法1：归一化到0-255显示
+            depth_normalized = cv.normalize(depth, None, 0, 255, cv.NORM_MINMAX, dtype=cv.CV_8U)
+
+            # 方法2：伪彩色显示
+            depth_colormap = cv.applyColorMap(depth_normalized, cv.COLORMAP_JET)
+
+            # 绘制图像
+            cv.imshow('RGB_image', cv.cvtColor(rgb, cv.COLOR_RGB2BGR))
+            cv.imshow('depth_image_1', depth_normalized)
+            cv.imshow('depth_image_2', depth_colormap)
+
             key = cv.waitKey(1)
-            if key == ord('s'):  # Save image
-                base_image_path = f'base-image-{int(10 * time.time()) % 100000000}.jpg'
-                cv.imwrite(base_image_path, cv.cvtColor(base_image, cv.COLOR_RGB2BGR))
-                print(f'Saved image to {base_image_path}')
-                wrist_image_path = f'wrist-image-{int(10 * time.time()) % 100000000}.jpg'
-                cv.imwrite(wrist_image_path, cv.cvtColor(wrist_image, cv.COLOR_RGB2BGR))
-                print(f'Saved image to {wrist_image_path}')
+            if key == ord('q'):
+                break
+
     finally:
-        base_camera.close()
-        wrist_camera.close()
+        d435i.close()
         cv.destroyAllWindows()
