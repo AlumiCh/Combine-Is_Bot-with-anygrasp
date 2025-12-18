@@ -8,9 +8,6 @@
 
 现在需要将 **RealSense D435i** 相机集成到该系统中，作为 AnyGrasp 推理的 RGB-D 数据源。
 
-**AnyGrasp SDK 位置：** `~/documents/anygrasp_sdk`  
-**项目位置：** IS_Bot
-
 ---
 
 ## 📁 **当前 D435i 状态**
@@ -171,31 +168,7 @@ def close(self):
 
 ---
 
-### **3. 相机标定（可选但推荐）**
-
-**需求：** 获取或计算相机到机器人基坐标系的变换矩阵
-
-**方式：**
-1. 从 D435i 获取内参（已在代码中实现）
-2. 使用棋盘或其他标定物体标定外参
-3. 或使用已知的固定安装配置
-
-**输出：** 4×4 变换矩阵 `camera_to_base`
-
-```python
-camera_to_base = np.array([
-    [r11, r12, r13, tx],
-    [r21, r22, r23, ty],
-    [r31, r32, r33, tz],
-    [0,   0,   0,   1]
-])
-```
-
-这个矩阵后续会被 `GraspConverter` 使用。
-
----
-
-### **4. 存储配置（在 constants.py 中）**
+### **3. 存储配置（在 constants.py 中）**
 
 **需求：** 添加 D435i 相关配置常量
 
@@ -250,43 +223,6 @@ CAMERA_TO_BASE_TRANSFORM = np.array([
 
 ---
 
-## 🔧 **参考代码**
-
-### **现有 D435i 测试代码片段：**
-
-```python
-# 来自 get_img_depth.py 的参考
-
-import pyrealsense2 as rs
-
-pipeline = rs.pipeline()
-config = rs.config()
-
-# 配置 RGB 流
-config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-
-# 配置深度流
-config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-
-# 获取深度缩放因子
-profile = pipeline.start(config)
-depth_sensor = profile.get_device().first_depth_sensor()
-depth_scale = depth_sensor.get_depth_scale()
-
-# 采集帧
-frames = pipeline.wait_for_frames()
-depth_frame = frames.get_depth_frame()
-color_frame = frames.get_color_frame()
-
-depth_image = np.asanyarray(depth_frame.get_data())
-color_image = np.asanyarray(color_frame.get_data())
-
-# 转换深度为实际距离
-real_distance = depth_image * depth_scale
-```
-
----
-
 ## 📊 **与 AnyGrasp 的关联**
 
 整合 D435i 后，`GraspPolicy` 将能访问：
@@ -313,17 +249,5 @@ def step(self, obs):
 3. **帧率不稳定** - 检查 USB 带宽、热应力
 4. **同步延迟** - 使用 `wait_for_frames()` 确保同步
 5. **坐标系混淆** - RGB 默认 BGR8，深度为 Z16（毫米）
-
----
-
-## 📦 **依赖检查**
-
-```bash
-# 验证 pyrealsense2 是否已安装
-python -c "import pyrealsense2; print(pyrealsense2.__version__)"
-
-# 如果未安装
-pip install pyrealsense2
-```
 
 ---
