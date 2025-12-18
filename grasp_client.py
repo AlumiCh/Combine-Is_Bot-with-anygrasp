@@ -6,7 +6,9 @@ AnyGrasp RPC 客户端
 """
 import logging
 import numpy as np
+import time
 from multiprocessing.managers import BaseManager
+from cameras import RealSenseCamera
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -78,12 +80,46 @@ if __name__ == '__main__':
         authkey=b'anygrasp'
     )
 
-    # 模拟数据
-    rgb = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-    depth = np.random.rand(480, 640).astype(np.float32)
+    logger.info("初始化相机")
+    camera = RealSenseCamera(resolution=(640, 480), fps=30)
+
+    # 获取相机内参
+    intrinsics = camera.get_intrinsics()
+    fx = intrinsics['fx']
+    fy = intrinsics['fy']
+    cx = intrinsics['cx']
+    cy = intrinsics['cy']
+
+    logger.info(f"相机内参: fx={fx:.2f}, fy={fy:.2f}, cx={cx:.2f}, cy={cy:.2f}")
+
+    # 工作区域设置
+    xmin, xmax = -0.3, 0.3
+    ymin, ymax = -0.3, 0.3
+    zmin, zmax = 0.0, 1.0
+    lims = [xmin, xmax, ymin, ymax, zmin, zmax]
+
+    try:
+        while True:
+            # 获取 RGB 和深度图
+            rgb, depth = camera.get_rgb_depth()
+            
+            if rgb is None or depth is None:
+                logger.info("等待相机数据")
+                time.sleep(0.1)
+                continue
+            
+            break
+    finally:
+        camera.close()
+        logger.info("相机已关闭")
 
     # 调用检测
+    logger.info("正在发送数据到 AnyGrasp 服务器...")
     grasp_list = client.predict(rgb, depth)
     logger.info(f"收到 {len(grasp_list)} 个抓取")
+    
+    # 打印前几个抓取的信息
+    for i, grasp in enumerate(grasp_list[:3]):
+        logger.info(f"抓取 {i}: position={grasp['position']}, score={grasp['score']:.3f}")
 
     client.close()
