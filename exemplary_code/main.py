@@ -4,6 +4,8 @@ from itertools import count
 from configs.constants import POLICY_CONTROL_PERIOD  # 从常量模块导入控制周期
 from collector.episode_storage import EpisodeWriter    # 数据存储模块
 from policies import TeleopPolicy, RemotePolicy  # 策略控制模块
+from policies.grasp_policy import GraspPolicy
+from robot_controller.ik_solver import IKSolver
 import numpy as np
 
 def args_parser_setting():
@@ -12,6 +14,7 @@ def args_parser_setting():
     parser.add_argument('--teleop', action='store_true')
     parser.add_argument('--save', action='store_true')
     parser.add_argument('--output-dir', default='data/demo_0505')
+    parser.add_argument('--anygrasp', action='store_true')
     return parser.parse_args()
     
 def should_save_episode(writer):
@@ -99,7 +102,20 @@ def main(args):
         env = RealEnv()
 
     # Create policy / 创建远程连接策略
-    if args.teleop:
+    if args.anygrasp:
+        policy = GraspPolicy(
+            camera_to_base_transform=np.array([ # 暂未测量，先用单位矩阵代替
+                [1, 0, 0, 0],
+                [0, 1, 0, 0],
+                [0, 0, 1, 0],
+                [0, 0, 0, 1]
+            ]),
+            ik_solver=IKSolver(ee_offset=0.12),
+            anygrasp_host='localhost',
+            anygrasp_port=50000,
+            anygrasp_authkey=b'anygrasp'
+        )
+    elif args.teleop:
         policy = TeleopPolicy() # 创建遥控操作策略
     else:
         policy = RemotePolicy() # 创建远程连接策略？ 为了训练？
