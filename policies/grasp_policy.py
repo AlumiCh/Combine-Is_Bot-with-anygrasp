@@ -14,7 +14,7 @@ sys.path.insert(0, parent_dir)
 from policies import Policy
 
 from ik_solver import IKSolver
-from policies.anygrasp_wrapper import AnyGraspWrapper
+from grasp_client import AnyGraspClient
 from robot_controller.grasp_converter import GraspConverter
 
 logging.basicConfig(level=logging.INFO)
@@ -23,34 +23,40 @@ logger = logging.getLogger(__name__)
 
 class GraspPolicy(Policy):
     def __init__(self, 
-                 anygrasp_model_path,
-                 camera_intrinsics,
                  camera_to_base_transform,
-                 workspace_limits,
-                 ik_solver=None):
+                 ik_solver=None,
+                 anygrasp_host='localhost',
+                 anygrasp_port=50000,
+                 anygrasp_authkey=b'anygrasp'):
         """
         初始化自动抓取策略
 
         Args:
-            anygrasp_model_path (str): AnyGrasp 模型权重文件路径
-            camera_intrinsics (dict): 相机内参字典，包含 'fx', 'fy', 'cx', 'cy', 'scale' 等
             camera_to_base_transform (np.ndarray): 相机到机器人基坐标系的 4x4 变换矩阵
-            workspace_limits (list or np.ndarray): 工作空间限制，格式为 [[xmin, xmax], [ymin, ymax], [zmin, zmax]]
             ik_solver (IKSolver, optional): 逆运动学求解器实例
+            anygrasp_host (str): AnyGrasp RPC 服务器地址
+            anygrasp_port (int): AnyGrasp RPC 服务器端口
+            anygrasp_authkey (bytes): RPC 认证密钥
         """
 
-        # 初始化接口封装对象
-        self.anygrasp = AnyGraspWrapper(anygrasp_model_path, 
-                                        camera_intrinsics,
-                                        workspace_limits,
-                                        )
+        # 连接 AnyGrasp RPC 服务器
+        logger.info(f"[GraspPolicy] 正在连接到 AnyGrasp 服务器: {anygrasp_host}:{anygrasp_port}")
+        self.anygrasp = AnyGraspClient(
+            host=anygrasp_host,
+            port=anygrasp_port,
+            authkey=anygrasp_authkey
+        )
         
-        # 初始化坐标系转换器对象
-        self.converter = GraspConverter(camera_intrinsics,
-                                        camera_to_base_transform)
+        # 初始化坐标系转换器
+        self.converter = GraspConverter(
+            camera_intrinsics=None,
+            camera_to_base_transform=camera_to_base_transform
+        )
         
         # 初始化IK求解器对象
         self.ik_solver = ik_solver
+        
+        logger.info("[GraspPolicy] 初始化完成")
         
         # 状态变量
         self.state = 'WAITING'  # 当前状态
@@ -98,22 +104,18 @@ class GraspPolicy(Policy):
     def _state_detecting(self, obs):
         """检测状态 - 执行抓取检测"""
         
-        # 从 obs 提取 RGB-D 图像
-        if 'wrist_rgb' not in obs or 'wrist_depth' not in obs:
-            logger.error("观测中缺少 RGB-D 图像")
+        # 调用 AnyGrasp RPC 服务器进行检测
+        logger.info("[GraspPolicy] 请求 AnyGrasp 服务器进行抓取检测...")
+        grasp_list = self.anygrasp.detect_grasps()
+        
+        if len(grasp_list) == 0:
+            logger.warning("[GraspPolicy] AnyGrasp 未检测到任何抓取")
             self.state = 'COMPLETED'
             return 'end_episode'
         
-        rgb = obs['wrist_rgb']
-        depth = obs['wrist_depth']
+        logger.info(f"[GraspPolicy] 收到 {len(grasp_list)} 个抓取候选")
         
-        # 调用 AnyGrasp 检测
-        grasps = self.anygrasp.predict(rgb, depth)
-        
-        # 解析抓取为字典
-        grasp_list = self.anygrasp._parse_grasp_group(grasps)
-        
-        # 遍历候选抓取
+        # 遍历候选抓取，寻找可达的抓取
         selected_grasp = self._select_reachable_grasp(grasp_list)
         
         if selected_grasp is None:
@@ -226,6 +228,15 @@ class GraspPolicy(Policy):
         
         return action
 
+    def get_state(self):
+        """
+        获取当前策略状态
+
+        Returns:
+            str: 当前状态字符串
+        """
+
+        return self.state
 
 # 测试代码
 if __name__ == '__main__':
