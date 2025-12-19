@@ -45,7 +45,6 @@ class AnyGraspWrapper:
                 self.fy = camera_intrinsics['fy']
                 self.cx = camera_intrinsics['cx']
                 self.cy = camera_intrinsics['cy']
-                self.scale = camera_intrinsics['scale']
             except Exception as e:
                 logger.error(f'未正确传入相机内参: {e}')
                 raise
@@ -100,7 +99,7 @@ class AnyGraspWrapper:
         # 生成点云
         xmap, ymap = np.arange(depth.shape[1]), np.arange(depth.shape[0])
         xmap, ymap = np.meshgrid(xmap, ymap)
-        points_z = depth / self.scale
+        points_z = depth
         points_x = (xmap - self.cx) / self.fx * points_z
         points_y = (ymap - self.cy) / self.fy * points_z
         
@@ -112,8 +111,8 @@ class AnyGraspWrapper:
             logger.warning("[_rgbd_to_pointcloud] 深度图全为0！")
         
         # 创建有效点mask
-        # 假设工作距离在 0.1m 到 2.0m 之间
-        mask = (points_z > 0.1) & (points_z < 2.0)
+        # 假设工作距离在 0.1m 到 5.0m 之间
+        mask = (points_z > 0.1) & (points_z < 5.0)
         
         # 提取有效点和颜色
         points = np.stack([points_x, points_y, points_z], axis=-1)
