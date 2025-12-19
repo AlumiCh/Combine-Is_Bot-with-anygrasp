@@ -11,7 +11,7 @@ class RealEnv:
     实现真实环境的类，负责与机器人底座和手臂的RPC连接。
     
     属性:
-        base: 底座的RPC代理对象。
+        base: 底座的RPC代理对象。   
         arm: 手臂的RPC代理对象。
         base_camera: 底座相机的实例。
         wrist_camera: 手腕相机的实例。
