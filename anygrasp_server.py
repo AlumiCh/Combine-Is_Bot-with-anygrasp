@@ -82,15 +82,35 @@ class AnyGraspService:
                 - width (float): 抓取宽度
                 - score (float): 抓取分数
         """
+        try:
+            # 获取图像
+            rgb, depth = self.camera.get_rgb_depth()
+            
+            if rgb is None or depth is None:
+                logger.warning("[AnyGraspService] 相机数据无效，返回空列表")
+                return []
+            
+            logger.info(f"[AnyGraspService] 获取图像: rgb={rgb.shape}, depth={depth.shape}")
 
-        # 获取图像
-        rgb, depth = self.camera.get_rgb_depth()
-        logger.info(f"[AnyGraspService] 获取图像: rgb={rgb.shape}, depth={depth.shape}")
-
-        # 推理获取抓取
-        grasp_list = self.anygrasp.predict(rgb, depth)
-        logger.info(f"[AnyGraspService] 推理完成，返回 {len(grasp_list)} 个抓取")
-        return grasp_list
+            # 推理获取抓取
+            grasp_list = self.anygrasp.predict(rgb, depth)
+            
+            logger.info(f"[AnyGraspService] 推理完成，返回 {len(grasp_list)} 个抓取")
+            
+            # 打印前几个抓取的分数
+            if len(grasp_list) > 0:
+                scores = [g['score'] for g in grasp_list[:5]]
+                logger.info(f"[AnyGraspService] 前5个抓取分数: {scores}")
+            else:
+                logger.warning("[AnyGraspService] 未检测到任何抓取！")
+            
+            return grasp_list
+            
+        except Exception as e:
+            logger.error(f"[AnyGraspService] 检测失败: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"[AnyGraspService] 错误堆栈:\n{traceback.format_exc()}")
+            return []  # 返回空列表而不是崩溃
 
 class AnyGraspManager(MPBaseManager):
     """
