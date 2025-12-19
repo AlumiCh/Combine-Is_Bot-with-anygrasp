@@ -202,7 +202,6 @@ def demo_from_file(data_dir):
 
 def demo_from_camera():
     """演示：从 RealSense 相机实时抓取检测"""
-    
     print("初始化相机")
     camera = RealSenseCamera(resolution=(640, 480), fps=30)
 
@@ -221,8 +220,8 @@ def demo_from_camera():
 
     # 工作区域设置
     xmin, xmax = -0.3, 0.3
-    ymin, ymax = -0.3, 0.3
-    zmin, zmax = 0.0, 1.0
+    ymin, ymax = -0.5, -0.1
+    zmin, zmax = 0.9, 1.1
     lims = [xmin, xmax, ymin, ymax, zmin, zmax]
 
     try:
@@ -251,12 +250,12 @@ def demo_from_camera():
             xmap, ymap = np.arange(width), np.arange(height)
             xmap, ymap = np.meshgrid(xmap, ymap)
             
-            points_z = depth  # 深度值已经是米
+            points_z = depth
             points_x = (xmap - cx) / fx * points_z
             points_y = (ymap - cy) / fy * points_z
             
             # 掩码：过滤有效深度范围
-            mask = (points_z > 0.1) & (points_z < 2.0)
+            mask = (points_z > 0.9) & (points_z < 1.1)
             points = np.stack([points_x, points_y, points_z], axis=-1)
             points = points[mask].astype(np.float32)
             
@@ -295,7 +294,7 @@ def demo_from_camera():
                 print(f"最佳抓取得分: {gg_pick[0].score:.4f}\n")
                 
                 # 在图像上绘制最优抓取
-                rgb_with_grasps = draw_grasps_on_image(rgb, gg_pick, intrinsics, max_grasps=5)
+                rgb_with_grasps = draw_grasps_on_image(rgb, gg_pick, intrinsics, max_grasps=1)
             
             # 显示图像
             cv2.imshow('RGB Image with Grasps', cv2.cvtColor(rgb_with_grasps, cv2.COLOR_RGB2BGR))
@@ -309,6 +308,16 @@ def demo_from_camera():
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 break
+
+            # visualization
+            if cfgs.debug:
+                trans_mat = np.array([[1,0,0,0],[0,1,0,0],[0,0,-1,0],[0,0,0,1]])
+                cloud.transform(trans_mat)
+                grippers = gg.to_open3d_geometry_list()
+                for gripper in grippers:
+                    gripper.transform(trans_mat)
+                o3d.visualization.draw_geometries([*grippers, cloud])
+                o3d.visualization.draw_geometries([grippers[0], cloud])
 
     finally:
         camera.close()
