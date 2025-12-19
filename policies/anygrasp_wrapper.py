@@ -194,13 +194,19 @@ class AnyGraspWrapper:
             depth (np.ndarray): 深度信息，形状为 [H, W]，类型为 float32
 
         Returns:
-            GraspGroup: AnyGrasp 返回的抓取组对象（已排序和NMS处理）
+            list[dict]: 抓取字典列表
         """
         
         # 生成点云
         points, colors = self._rgbd_to_pointcloud(rgb, depth)
         
+        # 检查点云是否为空
+        if len(points) == 0:
+            logger.warning("[AnyGraspWrapper] 点云为空，无法进行抓取检测")
+            return []
+        
         # 调用 AnyGrasp 推理
+        logger.info("[AnyGraspWrapper] 调用 AnyGrasp 推理...")
         gg, cloud = self.anygrasp.get_grasp(
             points, colors,
             lims=self.workspace_limits,
@@ -211,18 +217,22 @@ class AnyGraspWrapper:
         
         # 检查是否检测到抓取
         if len(gg) == 0:
-            logger.warning("未检测到抓取")
-            return gg
+            logger.warning("[AnyGraspWrapper] 未检测到任何抓取")
+            return []
         
         # 后处理
         gg = gg.nms().sort_by_score()  # nms()为非极大值抑制
         gg_pick = gg[0:20]  # 选取分数靠前的20个点
 
         # 打印抓取分数
-        logger.info(f"检测到 {len(gg_pick)} 个抓取候选")
-        logger.info(f"最佳抓取分数: {gg_pick[0].score:.4f}")
+        logger.info(f"[AnyGraspWrapper] 筛选后抓取数量: {len(gg_pick)}")
+        if len(gg_pick) > 0:
+            logger.info(f"[AnyGraspWrapper] 最佳抓取分数: {gg_pick.scores[0]:.4f}")
         
-        return gg_pick
+        # 转换为字典列表
+        grasp_list = self._parse_grasp_group(gg_pick)
+        
+        return grasp_list
 
 
 # 测试代码
