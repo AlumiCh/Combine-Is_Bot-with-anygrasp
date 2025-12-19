@@ -89,7 +89,7 @@ if __name__ == '__main__':
         
         # 打印前几个抓取的详细信息
         for i, grasp in enumerate(grasp_list[:5]):
-            logger.info(f"\n抓取 {i}:")
+            logger.info(f"\n抓取 {i+1}:")
             logger.info(f"  位置: {grasp['position']}")
             logger.info(f"  分数: {grasp['score']:.3f}")
             logger.info(f"  宽度: {grasp['width']:.3f}m")
@@ -100,4 +100,4 @@ if __name__ == '__main__':
     
     finally:
         client.close()
-        logger.info("测试完成")
+        logger.info("测试完成") 
