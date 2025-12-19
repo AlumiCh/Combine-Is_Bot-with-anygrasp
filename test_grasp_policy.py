@@ -3,6 +3,7 @@ import time
 import logging
 from policies.grasp_policy import GraspPolicy
 from exemplary_code.ik_solver import IKSolver
+from exemplary_code.real_env import RealEnv
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,11 +29,15 @@ policy = GraspPolicy(
     anygrasp_authkey=b'anygrasp'
 )
 
+# 创建 RealEnv 实例
+logger.info("初始化 RealEnv...")
+env = RealEnv()
+
 # 重置策略
 policy.reset()
 
 # 创建观测字典
-obs = {}
+obs = env.get_obs()
 
 logger.info("\n开始测试抓取检测...")
 
@@ -59,8 +64,10 @@ for i in range(num_steps):
         break
     else:
         state = policy.get_state()
-        logger.debug(f"当前状态为 {state},将执行动作：\narm_pos={action{'arm_pose'}}\narm_quat={'arm_quat'}\ngripper_pos={'gripper_pos'}")
+        logger.debug(f"当前状态为 {state},将执行动作：\narm_pos={action['arm_pose']}\narm_quat=['arm_quat']\ngripper_pos=['gripper_pos']")
     
     time.sleep(0.1)
 
-print("测试完成！")
+logger.info("测试完成！")
+
+env.close()
