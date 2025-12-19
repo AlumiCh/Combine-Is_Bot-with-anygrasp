@@ -95,7 +95,7 @@ def main(args):
         else:
             env = MujocoEnv()
     else: # 导入真实环境配置
-        from real_env import RealEnv
+        from exemplary_code.real_env import RealEnv
         env = RealEnv()
 
     # Create policy / 创建远程连接策略
