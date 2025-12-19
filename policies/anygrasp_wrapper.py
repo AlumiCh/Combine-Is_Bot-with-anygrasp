@@ -104,8 +104,16 @@ class AnyGraspWrapper:
         points_x = (xmap - self.cx) / self.fx * points_z
         points_y = (ymap - self.cy) / self.fy * points_z
         
+        # 打印深度统计信息
+        valid_depth_mask = depth > 0
+        if valid_depth_mask.any():
+            logger.info(f"[_rgbd_to_pointcloud] 深度范围: {depth[valid_depth_mask].min():.3f}m ~ {depth[valid_depth_mask].max():.3f}m")
+        else:
+            logger.warning("[_rgbd_to_pointcloud] 深度图全为0！")
+        
         # 创建有效点mask
-        mask = (points_z > 0) & (points_z < 1) # 此处深度依据相机与物体间距离做出更改
+        # 假设工作距离在 0.1m 到 2.0m 之间
+        mask = (points_z > 0.1) & (points_z < 2.0)
         
         # 提取有效点和颜色
         points = np.stack([points_x, points_y, points_z], axis=-1)
@@ -113,8 +121,14 @@ class AnyGraspWrapper:
         colors = rgb.astype(np.float32) / 255.0 # 归一化
         colors = colors[mask].astype(np.float32)
 
-        # 打印出来以便检查点云坐标是否合理
-        logger.debug(f"点云坐标范围: min={points.min(axis=0)}, max={points.max(axis=0)}")
+        # 检查点云是否为空
+        if len(points) == 0:
+            logger.warning("[_rgbd_to_pointcloud] 没有有效点云！深度值可能不在有效范围内")
+        else:
+            logger.info(f"[_rgbd_to_pointcloud] 点云坐标范围: "
+                       f"x=[{points[:, 0].min():.3f}, {points[:, 0].max():.3f}], "
+                       f"y=[{points[:, 1].min():.3f}, {points[:, 1].max():.3f}], "
+                       f"z=[{points[:, 2].min():.3f}, {points[:, 2].max():.3f}]")
         
         return points, colors
     
