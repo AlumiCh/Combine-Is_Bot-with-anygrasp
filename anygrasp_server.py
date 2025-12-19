@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import numpy as np
+from cameras import RealSenseCamera
 from multiprocessing.managers import BaseManager as MPBaseManager
 
 logging.basicConfig(level=logging.INFO)
@@ -32,19 +33,46 @@ class AnyGraspService:
 
         Args:
             checkpoint_path (str): 模型权重路径
-            cfgs (dict): AnyGrasp 配置字典
+            cfgs (argparse.Namespace): AnyGrasp 配置
         """
-
-        self.anygrasp = AnyGraspWrapper(checkpoint_path, cfgs)
-        logger.info("[AnyGraspService] 模型初始化完成")
+        # 先初始化相机获取内参
+        logger.info("[AnyGraspService] 正在初始化相机...")
+        self.camera = RealSenseCamera(resolution=(640, 480), fps=30)
+        
+        # 获取相机内参
+        intrinsics = self.camera.get_intrinsics()
+        depth_scale = self.camera.depth_scale
+        
+        # 构建相机内参字典
+        camera_intrinsics = {
+            'fx': intrinsics['fx'],
+            'fy': intrinsics['fy'],
+            'cx': intrinsics['cx'],
+            'cy': intrinsics['cy'],
+            'scale': depth_scale
+        }
+        
+        # 更新配置中的相机内参
+        cfgs.camera_intrinsics = camera_intrinsics
+        
+        # 初始化 AnyGrasp
+        logger.info("[AnyGraspService] 初始化 AnyGrasp 模型...")
+        self.anygrasp = AnyGraspWrapper(
+            checkpoint_path=checkpoint_path,
+            camera_intrinsics=camera_intrinsics,
+            workspace_limits=cfgs.workspace_limits,
+            max_gripper_width=cfgs.max_gripper_width,
+            gripper_height=cfgs.gripper_height,
+            top_down_grasp=cfgs.top_down_grasp
+        )
+        
+        logger.info("[AnyGraspService] 模型与相机初始化完成")
+        logger.info(f"  相机内参: fx={camera_intrinsics['fx']:.2f}, fy={camera_intrinsics['fy']:.2f}, "
+                   f"cx={camera_intrinsics['cx']:.2f}, cy={camera_intrinsics['cy']:.2f}")
     
-    def predict(self, rgb, depth):
+    def detect_grasps(self):
         """
-        执行抓取检测
-
-        Args:
-            rgb (np.ndarray): [H, W, 3] uint8 RGB 图像。
-            depth (np.ndarray): [H, W] float32 深度图（米）。
+        采集图像并执行抓取检测
 
         Returns:
             list[dict]: 抓取列表，每个抓取包含：
@@ -55,14 +83,14 @@ class AnyGraspService:
                 - score (float): 抓取分数
         """
 
-        logger.info(f"[AnyGraspService] 收到图像: rgb={rgb.shape}, depth={depth.shape}")
+        # 获取图像
+        rgb, depth = self.camera.get_rgb_depth()
+        logger.info(f"[AnyGraspService] 获取图像: rgb={rgb.shape}, depth={depth.shape}")
 
-        # 调用 AnyGraspWrapper
+        # 推理获取抓取
         grasp_list = self.anygrasp.predict(rgb, depth)
-
         logger.info(f"[AnyGraspService] 推理完成，返回 {len(grasp_list)} 个抓取")
         return grasp_list
-
 
 class AnyGraspManager(MPBaseManager):
     """
@@ -86,9 +114,12 @@ if __name__ == '__main__':
     max_gripper_width = 0.1  # 最大夹爪宽度（米）
     gripper_height = 0.03    # 夹爪高度（米）
     top_down_grasp = False   # 是否只检测俯视抓取
+    workspace_limits = None  # 工作空间限制 [xmin, xmax, ymin, ymax, zmin, zmax]
     
     cfgs = argparse.Namespace(
         checkpoint_path=checkpoint_path,
+        camera_intrinsics=None,
+        workspace_limits=workspace_limits,
         max_gripper_width=max(0, min(0.1, max_gripper_width)),
         gripper_height=gripper_height,
         top_down_grasp=top_down_grasp,
