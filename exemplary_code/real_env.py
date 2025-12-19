@@ -43,7 +43,7 @@ class RealEnv:
         # 相机
         # self.base_camera = LogitechCamera(BASE_CAMERA_SERIAL)
         # self.wrist_camera = KinovaCamera()
-        self.global_camera = RealSenseCamera()
+        # self.global_camera = RealSenseCamera()
 
     def get_obs(self):
         """
@@ -56,10 +56,10 @@ class RealEnv:
         obs.update(self.arm.get_state())
         
         # 获取 RGB-D 数据
-        wrist_rgb, wrist_depth = self.global_camera.get_rgb_depth()
-        obs['wrist_rgb'] = wrist_rgb      # [H, W, 3] uint8
-        obs['wrist_depth'] = wrist_depth  # [H, W] float32, 单位：米
-        obs['wrist_intrinsics'] = self.global_camera.get_intrinsics()  # 相机内参字典
+        # wrist_rgb, wrist_depth = self.global_camera.get_rgb_depth()
+        # obs['wrist_rgb'] = wrist_rgb      # [H, W, 3] uint8
+        # obs['wrist_depth'] = wrist_depth  # [H, W] float32, 单位：米
+        # obs['wrist_intrinsics'] = self.global_camera.get_intrinsics()  # 相机内参字典
         
         return obs
 
@@ -96,7 +96,7 @@ class RealEnv:
         """
         # self.base.close()
         self.arm.close()
-        self.global_camera.close()
+        # self.global_camera.close()
         # self.base_camera.close()
         # self.wrist_camera.close()
 
