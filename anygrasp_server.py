@@ -99,10 +99,6 @@ class AnyGraspManager(MPBaseManager):
     pass
 
 
-# 注册服务
-AnyGraspManager.register('AnyGraspService', AnyGraspService)
-
-
 if __name__ == '__main__':
     # 配置参数
     ANYGRASP_RPC_HOST = 'localhost'
@@ -131,7 +127,10 @@ if __name__ == '__main__':
 
     # 创建服务实例
     logger.info(f"[AnyGraspServer] 正在加载模型: {checkpoint_path}")
-    service = AnyGraspService(checkpoint_path, cfgs)
+    service_instance = AnyGraspService(checkpoint_path, cfgs)
+    
+    # 注册服务实例
+    AnyGraspManager.register('AnyGraspService', callable=lambda: service_instance)
     
     # 创建 Manager
     manager = AnyGraspManager(
