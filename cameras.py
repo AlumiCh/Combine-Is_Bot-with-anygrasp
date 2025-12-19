@@ -5,14 +5,27 @@ import cv2 as cv
 import numpy as np
 import pyrealsense2 as rs
 import logging
-from kortex_api.autogen.client_stubs.DeviceManagerClientRpc import DeviceManagerClient
-from kortex_api.autogen.client_stubs.VisionConfigClientRpc import VisionConfigClient
-from kortex_api.autogen.messages import DeviceConfig_pb2, VisionConfig_pb2
-from robot_controller.gen3.kinova import DeviceConnection
-from configs.constants import BASE_CAMERA_SERIAL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+try:
+    from kortex_api.autogen.client_stubs.DeviceManagerClientRpc import DeviceManagerClient
+    from kortex_api.autogen.client_stubs.VisionConfigClientRpc import VisionConfigClient
+    from kortex_api.autogen.messages import DeviceConfig_pb2, VisionConfig_pb2
+    from robot_controller.gen3.kinova import DeviceConnection
+    KORTEX_AVAILABLE = True
+except ImportError:
+    KORTEX_AVAILABLE = False
+    logger.warning("Kortex API not available - Kinova camera will not work")
+
+try:
+    from configs.constants import BASE_CAMERA_SERIAL
+    CONFIGS_AVAILABLE = True
+except ImportError:
+    CONFIGS_AVAILABLE = False
+    BASE_CAMERA_SERIAL = "unknown"
+    logger.warning("configs.constants not available")
 
 class Camera:
     def __init__(self):
@@ -90,6 +103,9 @@ def check_fisheye_centered(image):
 
 class KinovaCamera(Camera):
     def __init__(self):
+        if not KORTEX_AVAILABLE:
+            raise RuntimeError("Kortex API is required for KinovaCamera. Please install kortex_api.")
+        
         # GStreamer video capture (see https://github.com/Kinovarobotics/kortex/issues/88)
         # Note: max-buffers=1 and drop=true are added to reduce latency spikes
         self.cap = cv.VideoCapture('rtspsrc location=rtsp://192.168.1.10/color latency=0 ! decodebin ! videoconvert ! appsink sync=false max-buffers=1 drop=true', cv.CAP_GSTREAMER)
@@ -112,6 +128,10 @@ class KinovaCamera(Camera):
     def apply_camera_settings(self):
         # Note: This function adds significant camera latency when it is called
         # directly in __init__, so we call it in a separate thread instead
+        
+        if not KORTEX_AVAILABLE:
+            logger.warning("Kortex API not available, skipping camera settings")
+            return
 
         # Use Kortex API to set camera settings
         with DeviceConnection.createTcpConnection() as router:
@@ -151,7 +171,7 @@ class KinovaCamera(Camera):
             sensor_focus_action.focus_action = VisionConfig_pb2.FOCUSACTION_SET_MANUAL_FOCUS
             sensor_focus_action.manual_focus.value = 0
             vision_config.DoSensorFocusAction(sensor_focus_action, vision_device_id)
-            
+
 class RealSenseCamera(Camera):
     """
     RealSense D435i 相机封装类
@@ -175,7 +195,7 @@ class RealSenseCamera(Camera):
 
         # 需要将深度图对齐到 RGB 图
         self.align = rs.align(rs.stream.color)
-
+        
         # 保存参数
         self.resolution = resolution
         self.fps = fps
@@ -320,6 +340,10 @@ class RealSenseCamera(Camera):
         # 转换为 numpy 数组
         rgb = np.asanyarray(color_frame.get_data())
         depth = np.asanyarray(depth_frame.get_data())
+        
+        # 将深度值从毫米转换为米
+        depth = depth.astype(np.float32) * 0.001
+        
         return rgb, depth
     
     def close(self):
