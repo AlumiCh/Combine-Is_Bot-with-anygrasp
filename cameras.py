@@ -173,6 +173,9 @@ class RealSenseCamera(Camera):
             device_serial (str, optional): 设备序列号
         """
 
+        # 需要将深度图对齐到 RGB 图
+        self.align = rs.align(rs.stream.color)
+
         # 保存参数
         self.resolution = resolution
         self.fps = fps
@@ -305,7 +308,19 @@ class RealSenseCamera(Camera):
                 - depth: [H, W] 深度图，float32，单位：米
         """
 
-        return self.image, self.depth
+        frames = self.pipeline.wait_for_frames()
+
+        # 对齐深度图到 RGB 图
+        aligned_frames = self.align.process(frames)
+
+        # 获取对齐后的帧
+        color_frame = aligned_frames.get_color_frame()
+        depth_frame = aligned_frames.get_depth_frame()
+
+        # 转换为 numpy 数组
+        rgb = np.asanyarray(color_frame.get_data())
+        depth = np.asanyarray(depth_frame.get_data())
+        return rgb, depth
     
     def close(self):
         """ 关闭 RealSense 相机并释放资源 """
