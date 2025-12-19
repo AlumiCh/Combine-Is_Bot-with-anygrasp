@@ -220,7 +220,7 @@ def demo_from_camera():
 
     # 工作区域设置
     xmin, xmax = -0.3, 0.3
-    ymin, ymax = -0.5, -0.1
+    ymin, ymax = -0.4, -0.1
     zmin, zmax = 0.9, 1.1
     lims = [xmin, xmax, ymin, ymax, zmin, zmax]
 
