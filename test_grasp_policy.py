@@ -2,8 +2,8 @@ import numpy as np
 import time
 import logging
 from policies.grasp_policy import GraspPolicy
-from exemplary_code.ik_solver import IKSolver
-from exemplary_code.real_env import RealEnv
+from robot_controller.ik_solver import IKSolver
+from real_env import RealEnv
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ policy = GraspPolicy(
 # 创建 RealEnv 实例
 logger.info("初始化 RealEnv...")
 env = RealEnv()
+env.reset()
 
 # 重置策略
 policy.reset()
@@ -44,7 +45,7 @@ logger.info("\n开始测试抓取检测...")
 # 执行策略步骤
 num_steps = 10 # 执行的步数
 for i in range(num_steps):
-    logger.info(f"\n步骤 {i + 1}:")
+    logger.info(f"步骤 {i + 1}:")
     
     # 执行一次抓取
     action = policy.step(obs)
@@ -52,19 +53,19 @@ for i in range(num_steps):
     # 根据返回值类型进行不同处理
     if action is None:
         state = policy.get_state()
-        logger.debug(f"当前状态为 {state} ,继续")
+        logger.info(f"当前状态为 {state} ,继续")
         continue
     elif action == 'end_episode':
         state = policy.get_state()
-        logger.debug(f"当前状态为 {state} ,任务结束")
+        logger.info(f"当前状态为 {state} ,任务结束")
         break
     elif action == 'reset_env':
         state = policy.get_state()
-        logger.debug(f"当前状态为 {state} ,需要重置环境")
+        logger.info(f"当前状态为 {state} ,需要重置环境")
         break
     else:
         state = policy.get_state()
-        logger.debug(f"当前状态为 {state},将执行动作：\narm_pos={action['arm_pose']}\narm_quat=['arm_quat']\ngripper_pos=['gripper_pos']")
+        logger.info(f"当前状态为 {state},将执行动作：\narm_pos={action['arm_pos']}\narm_quat={action['arm_quat']}\ngripper_pos={action['gripper_pos']}")
     
     time.sleep(0.1)
 
