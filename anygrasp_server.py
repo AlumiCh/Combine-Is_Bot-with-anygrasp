@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(parent_dir)
 
-from policies.anygrasp_wrapper import AnyGraspWrapper
+from anygrasp_wrapper import AnyGraspWrapper
 
 
 class AnyGraspService:
@@ -110,11 +110,14 @@ if __name__ == '__main__':
     RPC_AUTHKEY = b'anygrasp'
 
     # AnyGrasp 模型配置
-    checkpoint_path = 'todo'
+    checkpoint_path = '/home/cuhk/Documents/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar'
     max_gripper_width = 0.1  # 最大夹爪宽度（米）
     gripper_height = 0.03    # 夹爪高度（米）
     top_down_grasp = False   # 是否只检测俯视抓取
-    workspace_limits = None  # 工作空间限制 [xmin, xmax, ymin, ymax, zmin, zmax]
+    xmin, xmax = -0.3, 0.3
+    ymin, ymax = -0.3, 0.3
+    zmin, zmax = 0.0, 1.0
+    workspace_limits = [xmin, xmax, ymin, ymax, zmin, zmax] # 工作空间限制 [xmin, xmax, ymin, ymax, zmin, zmax]
     
     cfgs = argparse.Namespace(
         checkpoint_path=checkpoint_path,
