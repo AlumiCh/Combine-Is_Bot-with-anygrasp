@@ -228,6 +228,15 @@ class GraspPolicy(Policy):
         
         return action
 
+    def get_state(self):
+        """
+        获取当前策略状态
+
+        Returns:
+            str: 当前状态字符串
+        """
+
+        return self.state
 
 # 测试代码
 if __name__ == '__main__':
