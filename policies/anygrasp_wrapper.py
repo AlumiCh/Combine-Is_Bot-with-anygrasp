@@ -187,7 +187,6 @@ class AnyGraspWrapper:
                 'position': positions[i].copy(),                # 三维坐标
                 'approach_direction': approach_direction,       # 接近方向
                 'rotation_matrix': rotation_matrices[i].copy(), # 旋转矩阵
-                'angle': 0.0,                                   # 角度，后续明确旋转矩阵构造后可从中计算得欧拉角
                 'width': float(widths[i]),                      # 宽度
                 'score': float(scores[i])                       # 抓取分数
             }
