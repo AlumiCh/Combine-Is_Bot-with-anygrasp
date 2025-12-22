@@ -76,12 +76,15 @@ class RealEnv:
 
         print('[real_env-reset] 机器人已重置')
 
-    def step(self, action):
+    def step(self, action, wait_for_arrival=True, position_threshold=0.01, timeout=10.0):
         """
         执行给定的动作。
 
         参数:
             action (dict): 包含底座和手臂动作的字典。
+            wait_for_arrival (bool): 是否等待机械臂到达目标位置，默认 True
+            position_threshold (float): 位置收敛阈值（米），默认 0.01m = 1cm
+            timeout (float): 超时时间（秒），默认 10.0s
 
         注意: 
             我们故意不在此处返回观测数据，以防止策略使用过时的数据。
@@ -91,7 +94,8 @@ class RealEnv:
         print('[real_env-step] 执行动作...')
 
         # target position
-        logger.info(f"target position: {action['arm_pos']}")
+        target_pos = action['arm_pos']
+        logger.info(f"target position: {target_pos}")
 
         # current position
         curr_pos = self.get_obs()['arm_pos']
@@ -99,7 +103,32 @@ class RealEnv:
 
         # move
         self.arm.execute_action(action)   # 非阻塞
-        time.sleep(0.05)
+        
+        # 如果需要等待到达
+        if wait_for_arrival:
+            import numpy as np
+            start_time = time.time()
+            
+            while True:
+                time.sleep(0.05)  # 50ms 检查一次
+                
+                # 获取当前位置
+                curr_pos = self.get_obs()['arm_pos']
+                
+                # 计算位置误差
+                position_error = np.linalg.norm(curr_pos - target_pos)
+                
+                # 检查是否到达
+                if position_error < position_threshold:
+                    logger.info(f"[real_env-step] 已到达目标位置，误差: {position_error:.4f}m")
+                    break
+                
+                # 检查超时
+                if time.time() - start_time > timeout:
+                    logger.warning(f"[real_env-step] 等待超时 ({timeout}s)，当前误差: {position_error:.4f}m")
+                    break
+        else:
+            time.sleep(0.05)
 
     def close(self):
         """
