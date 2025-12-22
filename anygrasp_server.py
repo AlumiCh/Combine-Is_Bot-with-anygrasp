@@ -127,12 +127,12 @@ if __name__ == '__main__':
 
     # AnyGrasp 模型配置
     checkpoint_path = '/home/cuhk/Documents/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar'
-    max_gripper_width = 0.1  # 最大夹爪宽度（米）
+    max_gripper_width = 0.09  # 最大夹爪宽度（米）
     gripper_height = 0.03    # 夹爪高度（米）
     top_down_grasp = False   # 是否只检测俯视抓取
     xmin, xmax = -0.3, 0.3
-    ymin, ymax = -0.3, 0.3
-    zmin, zmax = 0.0, 1.0
+    ymin, ymax = -0.4, -0.1
+    zmin, zmax = 0.8, 1.1
     workspace_limits = [xmin, xmax, ymin, ymax, zmin, zmax] # 工作空间限制 [xmin, xmax, ymin, ymax, zmin, zmax]
     
     cfgs = argparse.Namespace(
