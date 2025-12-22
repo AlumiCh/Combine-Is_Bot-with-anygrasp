@@ -64,6 +64,7 @@ class GraspConverter:
         grasp_pos_homo = np.array([grasp_pos[0], grasp_pos[1], grasp_pos[2], 1])
         base_pos_homo = self.camera_to_base @ grasp_pos_homo
         base_pos = base_pos_homo[:3]
+        logger.info(f"\nposition: ({base_pos[0]}, {base_pos[1]}, {base_pos[2]})")
         
         # 计算接近位置
         approach_dir_base = self.rotation_c2b @ approach_dir
@@ -74,6 +75,8 @@ class GraspConverter:
         rotation_matrix_camera = grasp['rotation_matrix']    
         rotation_matrix_base = self.rotation_c2b @ rotation_matrix_camera
         quaternion = R.from_matrix(rotation_matrix_base).as_quat()
+
+        logger.info(f"\napproach_position_base: ({approach_pos_base[0]}, {approach_pos_base[1]}, {approach_pos_base[2]})")
 
         return approach_pos_base, quaternion
 
