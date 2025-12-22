@@ -11,11 +11,11 @@ import logging
 # 导入 Policy 基类
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
-from policies import Policy
+from policies.policies import Policy
 
-from ik_solver import IKSolver
+from robot_controller.ik_solver import IKSolver
 from grasp_client import AnyGraspClient
-from robot_controller.grasp_converter import GraspConverter
+from anygrasp.grasp_converter import GraspConverter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ class GraspPolicy(Policy):
         执行一步自动抓取
 
         Args:
-            obs (dict): 环境观测字典，具体定义结构需要拿到相机才能确定
+            obs (dict): 环境观测字典
 
         Returns:
             dict or str: 动作字典或控制命令
@@ -179,34 +179,38 @@ class GraspPolicy(Policy):
         actions = []
         
         # 动作1 - 打开夹爪
-        actions.append({
-            'arm_pos': obs['arm_pos'].copy(),
-            'arm_quat': obs['arm_quat'].copy(),
-            'gripper_pos': np.array([1.0])
-        })
+        for _ in range(20):
+            actions.append({
+                'arm_pos': obs['arm_pos'].copy(),
+                'arm_quat': obs['arm_quat'].copy(),
+                'gripper_pos': np.array([0])
+            })
         
         # 动作2 - 移动到接近位置
-        actions.append({
-            'arm_pos': grasp['ee_position'].copy(),
-            'arm_quat': grasp['ee_quaternion'].copy(),
-            'gripper_pos': np.array([1.0])
-        })
+        for _ in range(300):
+            actions.append({
+                'arm_pos': grasp['ee_position'].copy(),
+                'arm_quat': grasp['ee_quaternion'].copy(),
+                'gripper_pos': np.array([0])
+            })
         
         # 动作3 - 闭合夹爪
-        actions.append({
-            'arm_pos': grasp['ee_position'].copy(),
-            'arm_quat': grasp['ee_quaternion'].copy(),
-            'gripper_pos': np.array([0.0])
-        })
+        for _ in range(20):
+            actions.append({
+                'arm_pos': grasp['ee_position'].copy(),
+                'arm_quat': grasp['ee_quaternion'].copy(),
+                'gripper_pos': np.array([1])
+            })
         
         # 动作4 - 提升物体
         lift_pos = grasp['ee_position'].copy()
         lift_pos[2] += 0.1
-        actions.append({
-            'arm_pos': lift_pos,
-            'arm_quat': grasp['ee_quaternion'].copy(),
-            'gripper_pos': np.array([0.0])
-        })
+        for _ in range(100):
+            actions.append({
+                'arm_pos': lift_pos,
+                'arm_quat': grasp['ee_quaternion'].copy(),
+                'gripper_pos': np.array([1])
+            })
         
         return actions
     
