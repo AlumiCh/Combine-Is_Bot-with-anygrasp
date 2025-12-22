@@ -14,7 +14,7 @@ def args_parser_setting():
     parser.add_argument('--teleop', action='store_true')
     parser.add_argument('--save', action='store_true')
     parser.add_argument('--output-dir', default='data/demo_0505')
-    parser.add_argument('--anygrasp', action='store_true')
+    parser.add_argument('--anygrasp', default='store_true')
     return parser.parse_args()
     
 def should_save_episode(writer):
@@ -98,16 +98,16 @@ def main(args):
         else:
             env = MujocoEnv()
     else: # 导入真实环境配置
-        from exemplary_code.real_env import RealEnv
+        from real_env import RealEnv
         env = RealEnv()
 
     # Create policy / 创建远程连接策略
     if args.anygrasp:
         policy = GraspPolicy(
             camera_to_base_transform=np.array([ # 暂未测量，先用单位矩阵代替
-                [1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, 1, 0],
+                [-1, 0, 0, -0.09],
+                [0, 1, 0, 0.57],
+                [0, 0, -1, 1.01],
                 [0, 0, 0, 1]
             ]),
             ik_solver=IKSolver(ee_offset=0.12),
