@@ -1,17 +1,23 @@
 # Update: 2025-03-19
 
-from cameras import KinovaCamera, LogitechCamera, RealSenseCamera
+import time
+import logging
+
+from cameras import KinovaCamera, LogitechCamera
 from configs.constants import BASE_RPC_HOST, BASE_RPC_PORT, ARM_RPC_HOST, ARM_RPC_PORT, RPC_AUTHKEY
 from configs.constants import BASE_CAMERA_SERIAL
-from exemplary_code.arm_server import ArmManager 
+from arm_server import ArmManager 
 # from base_server import BaseManager
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class RealEnv:
     """
     实现真实环境的类，负责与机器人底座和手臂的RPC连接。
     
     属性:
-        base: 底座的RPC代理对象。   
+        base: 底座的RPC代理对象。
         arm: 手臂的RPC代理对象。
         base_camera: 底座相机的实例。
         wrist_camera: 手腕相机的实例。
@@ -43,7 +49,6 @@ class RealEnv:
         # 相机
         # self.base_camera = LogitechCamera(BASE_CAMERA_SERIAL)
         # self.wrist_camera = KinovaCamera()
-        # self.global_camera = RealSenseCamera()
 
     def get_obs(self):
         """
@@ -53,14 +58,10 @@ class RealEnv:
             dict: 包含底座状态、手臂状态和相机图像的字典。
         """
         obs = {}
+        # obs.update(self.base.get_state())
         obs.update(self.arm.get_state())
-        
-        # 获取 RGB-D 数据
-        # wrist_rgb, wrist_depth = self.global_camera.get_rgb_depth()
-        # obs['wrist_rgb'] = wrist_rgb      # [H, W, 3] uint8
-        # obs['wrist_depth'] = wrist_depth  # [H, W] float32, 单位：米
-        # obs['wrist_intrinsics'] = self.global_camera.get_intrinsics()  # 相机内参字典
-        
+        # obs['base_image'] = self.base_camera.get_image()
+        # obs['wrist_image'] = self.wrist_camera.get_image()
         return obs
 
     def reset(self):
@@ -88,7 +89,17 @@ class RealEnv:
         # self.base.execute_action(action)  # 非阻塞
         # 执行动作
         print('[real_env-step] 执行动作...')
+
+        # target position
+        logger.info(f"target position: {action['arm_pos']}")
+
+        # current position
+        curr_pos = self.get_obs()['arm_pos']
+        logger.info(f"current position: {curr_pos}")
+
+        # move
         self.arm.execute_action(action)   # 非阻塞
+        time.sleep(0.05)
 
     def close(self):
         """
@@ -96,7 +107,6 @@ class RealEnv:
         """
         # self.base.close()
         self.arm.close()
-        # self.global_camera.close()
         # self.base_camera.close()
         # self.wrist_camera.close()
 
