@@ -7,6 +7,7 @@ import numpy as np
 import sys
 import os
 import logging
+from scipy.spatial.transform import Rotation, Slerp
 
 # 导入 Policy 基类
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -164,6 +165,39 @@ class GraspPolicy(Policy):
         
         return None
     
+    def _interpolate_trajectory(self, start_pos, start_quat, end_pos, end_quat, num_steps=10):
+        """
+        在起点和终点之间进行轨迹插值
+        
+        Args:
+            start_pos (np.ndarray): 起始位置 (3,)
+            start_quat (np.ndarray): 起始四元数 (4,) [x, y, z, w]
+            end_pos (np.ndarray): 目标位置 (3,)
+            end_quat (np.ndarray): 目标四元数 (4,) [x, y, z, w]
+            num_steps (int): 插值步数，默认 10
+            
+        Returns:
+            list: 插值后的位姿列表 [(pos, quat), ...]
+        """
+        trajectory = []
+        
+        # 位置线性插值
+        for i in range(num_steps):
+            alpha = (i + 1) / num_steps  # 0 到 1 的插值系数
+            interp_pos = (1 - alpha) * start_pos + alpha * end_pos
+            
+            # 四元数球面线性插值 (SLERP)
+            # 创建旋转对象
+            key_rots = Rotation.from_quat([start_quat, end_quat])
+            slerp = Slerp([0, 1], key_rots)
+            interp_rot = slerp(alpha)
+            interp_quat = interp_rot.as_quat()
+            
+            trajectory.append((interp_pos, interp_quat))
+        
+        logger.debug(f"[GraspPolicy] 生成了 {len(trajectory)} 个插值路径点")
+        return trajectory
+    
     def _generate_action_sequence(self, grasp, obs):
         """
         生成完整的抓取动作序列
@@ -182,31 +216,58 @@ class GraspPolicy(Policy):
         actions.append({
             'arm_pos': obs['arm_pos'].copy(),
             'arm_quat': obs['arm_quat'].copy(),
-            'gripper_pos': np.array([1.0])
+            'gripper_pos': np.array(0.0)
         })
         
-        # 动作2 - 移动到接近位置
-        actions.append({
-            'arm_pos': grasp['ee_position'].copy(),
-            'arm_quat': grasp['ee_quaternion'].copy(),
-            'gripper_pos': np.array([1.0])
-        })
+        # 动作2 - 移动到目标抓取的接近位置
+        # 计算当前位置到目标位置的距离
+        distance = np.linalg.norm(grasp['ee_position'] - obs['arm_pos'])
+
+        # 根据距离自动调整插值步数
+        num_steps = max(10, int(distance / 0.05))
+        logger.info(f"[GraspPolicy] 距离: {distance:.3f}m, 插值步数: {num_steps}")
+        
+        trajectory = self._interpolate_trajectory(
+            start_pos=obs['arm_pos'],
+            start_quat=obs['arm_quat'],
+            end_pos=grasp['ee_position'],
+            end_quat=grasp['ee_quaternion'],
+            num_steps=num_steps
+        )
+        
+        # 将插值路径点添加到动作序列
+        for pos, quat in trajectory:
+            actions.append({
+                'arm_pos': pos,
+                'arm_quat': quat,
+                'gripper_pos': np.array([0.0])
+            })
         
         # 动作3 - 闭合夹爪
         actions.append({
             'arm_pos': grasp['ee_position'].copy(),
             'arm_quat': grasp['ee_quaternion'].copy(),
-            'gripper_pos': np.array([0.0])
+            'gripper_pos': np.array([1.0])
         })
         
         # 动作4 - 提升物体
         lift_pos = grasp['ee_position'].copy()
         lift_pos[2] += 0.1
-        actions.append({
-            'arm_pos': lift_pos,
-            'arm_quat': grasp['ee_quaternion'].copy(),
-            'gripper_pos': np.array([0.0])
-        })
+        
+        lift_trajectory = self._interpolate_trajectory(
+            start_pos=grasp['ee_position'],
+            start_quat=grasp['ee_quaternion'],
+            end_pos=lift_pos,
+            end_quat=grasp['ee_quaternion'],
+            num_steps=5
+        )
+        
+        for pos, quat in lift_trajectory:
+            actions.append({
+                'arm_pos': pos,
+                'arm_quat': quat,
+                'gripper_pos': np.array([1.0])
+            })
         
         return actions
     
