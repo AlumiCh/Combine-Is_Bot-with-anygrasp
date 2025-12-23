@@ -1,35 +1,39 @@
-(anygrasp39) cuhk@cuhk-System-Product-Name:~/Documents/anygrasp_sdk/grasp_detection$ python ./anygrasp_server.py
-WARNING:cameras:Kortex API not available - Kinova camera will not work
-WARNING:cameras:configs.constants not available
-checking license on /home/cuhk/Documents/anygrasp_sdk/grasp_detection/gsnet.cpython-39-x86_64-linux-gnu.so
-[2025-12-19 13:03:02.636] [info] [FlexivLic] public key YiboPeng.public_key & signature YiboPeng.signature are matched
-[2025-12-19 13:03:02.637] [info] [FlexivLic] license /home/cuhk/Documents/anygrasp_sdk/grasp_detection/license/YiboPeng.lic check passed.
-license passed: True, state: FvrLicenseState.PASSED
-WARNING:root:Failed to import ros dependencies in rigid_transforms.py
-WARNING:root:autolab_core not installed as catkin package, RigidTransform ros methods will be unavailable
-INFO:__main__:[AnyGraspServer] 正在加载模型: /home/cuhk/Documents/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar
-INFO:__main__:[AnyGraspService] 正在初始化相机...
-INFO:cameras:[RealSenseCamera] Depth scale: 0.0010000000474974513
-INFO:cameras:[RealSenseCamera] 相机内参: fx=605.85, fy=605.72
-INFO:__main__:[AnyGraspService] 初始化 AnyGrasp 模型...
-INFO:anygrasp_wrapper:[AnyGraspWrapper] 模型加载成功: /home/cuhk/Documents/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar
-INFO:__main__:[AnyGraspService] 模型与相机初始化完成
-INFO:__main__:  相机内参: fx=605.85, fy=605.72, cx=318.98, cy=255.84
-INFO:__main__:AnyGrasp RPC 服务器已启动: localhost:50000
-INFO:__main__:等待客户端连接...
-INFO:__main__:[AnyGraspService] 获取图像: rgb=(480, 640, 3), depth=(480, 640)
-ERROR:__main__:[AnyGraspService] 检测失败: ValueError: zero-size array to reduction operation minimum which has no identity
-ERROR:__main__:[AnyGraspService] 错误堆栈:
-ValueError: zero-size array to reduction operation minimum which has no identity
+    def solve_basic(self, pos, quat, curr_qpos, max_iters=50, err_thresh=1e-6):
+        """
+        基础版 IK 求解器：
+        - 仅使用雅可比伪逆
+        - 不包含阻尼（不规避奇异点）
+        - 不包含零空间任务（不考虑参考姿态）
+        - 追求高精度迭代
+        """
+        # 1. 初始化关节位置
+        self.data.qpos = curr_qpos
 
+        for _ in range(max_iters):
+            # 2. 正向运动学更新：计算当前末端位姿
+            mujoco.mj_kinematics(self.model, self.data)
 
+            # 3. 计算 6 维误差 (位置 + 旋转)
+            # 平移误差
+            self.err_pos[:] = pos - self.site_pos
+            # 旋转误差 (四元数差转角速度向量)
+            mujoco.mju_mat2Quat(self.site_quat, self.site_mat)
+            mujoco.mju_negQuat(self.site_quat_inv, self.site_quat)
+            mujoco.mju_mulQuat(self.err_quat, quat, self.site_quat_inv)
+            mujoco.mju_quat2Vel(self.err_rot, self.err_quat, 1.0)
 
+            # 4. 精度检查：如果误差足够小，直接返回
+            if np.linalg.norm(self.err) < err_thresh:
+                break
 
-(isbot) cuhk@cuhk-System-Product-Name:~/ZMAI/IS_Bot$ python ./grasp_client.py
-INFO:__main__:[AnyGraspClient] 正在连接到 localhost:50000...
-INFO:__main__:[AnyGraspClient] 连接成功
-INFO:__main__:正在请求 AnyGrasp 服务器进行抓取检测...
-INFO:__main__:[AnyGraspClient] 请求抓取检测...
-INFO:__main__:收到 0 个抓取
-INFO:__main__:[AnyGraspClient] 关闭连接
-INFO:__main__:测试完成
+            # 5. 获取当前雅可比矩阵 (6 x 关节数)
+            mujoco.mj_jacSite(self.model, self.data, self.jac_pos, self.jac_rot, self.site_id)
+
+            # 6. 核心计算：使用 Moore-Penrose 伪逆直接求解关节增量
+            # update = J⁺ * err
+            update = np.linalg.pinv(self.jac) @ self.err
+
+            # 7. 更新关节位置
+            mujoco.mj_integratePos(self.model, self.data.qpos, update, 1.0)
+
+        return self.data.qpos.copy()
