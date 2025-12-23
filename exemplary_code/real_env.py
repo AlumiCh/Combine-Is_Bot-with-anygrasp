@@ -115,7 +115,7 @@ class RealEnv:
         curr_quat = obs['arm_quat']
         curr_euler = R.from_quat(curr_quat).as_euler('xyz', degrees=True)
         logger.info(f"current euler (xyz, deg): {curr_euler}")
-
+        
         # 如果需要等待到达
         if wait_for_arrival:
             start_time = time.time()
