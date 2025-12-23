@@ -2,6 +2,8 @@
 
 import time
 import logging
+import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 from cameras import KinovaCamera, LogitechCamera
 from configs.constants import BASE_RPC_HOST, BASE_RPC_PORT, ARM_RPC_HOST, ARM_RPC_PORT, RPC_AUTHKEY
@@ -93,55 +95,58 @@ class RealEnv:
         # 执行动作
         print('[real_env-step] 执行动作...')
 
-        # target position
+        # 目标位置
         target_pos = action['arm_pos']
         logger.info(f"target position: {target_pos}")
 
-        #
+        # 目标姿态
         target_quat = action['arm_quat']
-        logger.info(f"target quaternion: {target_quat}")
+        target_euler = R.from_quat(target_quat).as_euler('xyz', degrees=True)
+        logger.info(f"target euler (xyz, deg): {target_euler}")
 
-        # current position
-        curr_pos = self.get_obs()['arm_pos']
+        # 获取当前观测
+        obs = self.get_obs()
+
+        # 当前位置
+        curr_pos = obs['arm_pos']
         logger.info(f"current position: {curr_pos}")
 
-        #
-        curr_quat = self.get_obs()['arm_quat']
-        logger.info(f"current quaternion: {curr_quat}")
+        # 当前姿态
+        curr_quat = obs['arm_quat']
+        curr_euler = R.from_quat(curr_quat).as_euler('xyz', degrees=True)
+        logger.info(f"current euler (xyz, deg): {curr_euler}")
 
         # 如果需要等待到达
         if wait_for_arrival:
-            import numpy as np
             start_time = time.time()
             
             while True:
-                # move
-                self.arm.execute_action(action)   # 非阻塞
+                # 发送控制指令（非阻塞）
+                self.arm.execute_action(action)
 
                 time.sleep(0.05)
                 
-                # 获取当前位置
-                curr_pos = self.get_obs()['arm_pos']
-
-                #
-                curr_quat = self.get_obs()['arm_quat']
+                # 获取当前观测
+                curr_obs = self.get_obs()
+                curr_pos = curr_obs['arm_pos']
+                curr_quat = curr_obs['arm_quat']
                 
                 # 计算位置误差
                 position_error = np.linalg.norm(curr_pos - target_pos)
 
-                #
+                # 计算姿态误差（四元数距离）
                 quaternion_error = np.linalg.norm(curr_quat - target_quat)
                 
-                # 检查是否到达
+                # 检查是否到达目标位置
                 if position_error < position_threshold:
                     logger.info(f"[real_env-step] 已到达目标位置，position误差: {position_error:.4f}m")
-                    logger.info(f"[real_env-step] 已到达目标位置，quaternion误差: {quaternion_error:.4f}")
+                    logger.info(f"[real_env-step] 姿态误差: {quaternion_error:.4f}")
                     break
                 
-                # 检查超时
+                # 检查是否超时
                 if time.time() - start_time > timeout:
                     logger.warning(f"[real_env-step] 等待超时 ({timeout}s)，当前position误差: {position_error:.4f}m")
-                    logger.warning(f"[real_env-step] 等待超时 ({timeout}s)，当前quaternion误差: {quaternion_error:.4f}")
+                    logger.warning(f"[real_env-step] 当前姿态误差: {quaternion_error:.4f}")
                     break
         else:
             self.arm.execute_action(action)   # 非阻塞
