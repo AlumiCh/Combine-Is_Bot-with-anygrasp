@@ -104,9 +104,9 @@ def main(args):
     # Create policy / 创建远程连接策略
     if args.anygrasp:
         policy = GraspPolicy(
-            camera_to_base_transform=np.array([ # 暂未测量，先用单位矩阵代替
-                [-1, 0, 0, -0.09],
+            camera_to_base_transform=np.array([ 
                 [0, 1, 0, 0.57],
+                [1, 0, 0, 0.09],
                 [0, 0, -1, 1.01],
                 [0, 0, 0, 1]
             ]),
