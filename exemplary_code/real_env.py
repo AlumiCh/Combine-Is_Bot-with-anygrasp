@@ -76,7 +76,7 @@ class RealEnv:
 
         print('[real_env-reset] 机器人已重置')
 
-    def step(self, action, wait_for_arrival=True, position_threshold=0.01, timeout=10.0):
+    def step(self, action, wait_for_arrival=True, position_threshold=0.022, timeout=10.0):
         """
         执行给定的动作。
 
@@ -97,37 +97,54 @@ class RealEnv:
         target_pos = action['arm_pos']
         logger.info(f"target position: {target_pos}")
 
+        #
+        target_quat = action['arm_quat']
+        logger.info(f"target quaternion: {target_quat}")
+
         # current position
         curr_pos = self.get_obs()['arm_pos']
         logger.info(f"current position: {curr_pos}")
 
-        # move
-        self.arm.execute_action(action)   # 非阻塞
-        
+        #
+        curr_quat = self.get_obs()['arm_quat']
+        logger.info(f"current quaternion: {curr_quat}")
+
         # 如果需要等待到达
         if wait_for_arrival:
             import numpy as np
             start_time = time.time()
             
             while True:
-                time.sleep(0.05)  # 50ms 检查一次
+                # move
+                self.arm.execute_action(action)   # 非阻塞
+
+                time.sleep(0.05)
                 
                 # 获取当前位置
                 curr_pos = self.get_obs()['arm_pos']
+
+                #
+                curr_quat = self.get_obs()['arm_quat']
                 
                 # 计算位置误差
                 position_error = np.linalg.norm(curr_pos - target_pos)
+
+                #
+                quaternion_error = np.linalg.norm(curr_quat - target_quat)
                 
                 # 检查是否到达
                 if position_error < position_threshold:
-                    logger.info(f"[real_env-step] 已到达目标位置，误差: {position_error:.4f}m")
+                    logger.info(f"[real_env-step] 已到达目标位置，position误差: {position_error:.4f}m")
+                    logger.info(f"[real_env-step] 已到达目标位置，quaternion误差: {quaternion_error:.4f}")
                     break
                 
                 # 检查超时
                 if time.time() - start_time > timeout:
-                    logger.warning(f"[real_env-step] 等待超时 ({timeout}s)，当前误差: {position_error:.4f}m")
+                    logger.warning(f"[real_env-step] 等待超时 ({timeout}s)，当前position误差: {position_error:.4f}m")
+                    logger.warning(f"[real_env-step] 等待超时 ({timeout}s)，当前quaternion误差: {quaternion_error:.4f}")
                     break
         else:
+            self.arm.execute_action(action)   # 非阻塞
             time.sleep(0.05)
 
     def close(self):
