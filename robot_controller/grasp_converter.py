@@ -74,10 +74,12 @@ class GraspConverter:
         # 将旋转矩阵转换为四元数
         rotation_matrix_camera = grasp['rotation_matrix']    
         rotation_matrix_base = self.rotation_c2b @ rotation_matrix_camera
-        quaternion = R.from_matrix(rotation_matrix_base).as_quat()
+        rotation = R.from_matrix(rotation_matrix_base)
+        quaternion = rotation.as_quat()
+        euler = rotation.as_euler('xyz', degrees=True)
 
         logger.info(f"approach_position_base: ({approach_pos_base[0]}, {approach_pos_base[1]}, {approach_pos_base[2]})")
-        logger.info(f"approach_quaternion_base: ({quaternion[0]}, {quaternion[1]}, {quaternion[2]}, {quaternion[3]})")
+        logger.info(f"approach_euler_base (xyz, deg): ({euler[0]:.2f}, {euler[1]:.2f}, {euler[2]:.2f})")
 
         return approach_pos_base, quaternion
 
