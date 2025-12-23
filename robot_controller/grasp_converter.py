@@ -41,48 +41,68 @@ class GraspConverter:
 
         # 获取平移部分
         self.translation_c2b = self.camera_to_base[:3, 3]
+        
+        # AnyGrasp坐标系到机械臂末端执行器坐标系的变换
+        # AnyGrasp坐标系：X轴=接近方向向外，Y轴=夹爪之间，Z轴=正交
+        # 机械臂末端执行器坐标系：Z轴=接近方向向内，X轴=夹爪之间，Y轴=正交
+        self.anygrasp_to_ee = np.array([
+            [ 0,  1,  0],  # EE的X轴 = AnyGrasp的Y轴
+            [ 0,  0,  1],  # EE的Y轴 = AnyGrasp的Z轴
+            [-1,  0,  0]   # EE的Z轴 = -AnyGrasp的X轴（向内）
+        ])
     
     def grasp_to_ee_pose(self, grasp, approach_distance=0.05):
         """
         将抓取候选转换为末端执行器目标位姿
+        
+        坐标变换流程：
+        1. AnyGrasp坐标系 → 末端执行器坐标系（相机参考系下）
+        2. 相机坐标系 → 机器人基座坐标系
+        3. 计算接近位置（沿接近方向后退一定距离）
 
         Args:
-            grasp (dict or GraspGroup): 抓取字典
-            approach_distance (float): 接近距离（米）。
+            grasp (dict): 抓取字典，包含：
+                - position: [x,y,z] 抓取位置（相机坐标系）
+                - rotation_matrix: 3x3旋转矩阵（AnyGrasp坐标系）
+            approach_distance (float): 接近距离（米），默认0.05m
 
         Returns:
             Tuple[np.ndarray, np.ndarray]: 
-                - position: np.array([x, y, z])，末端执行器目标位置。
-                - quaternion: np.array([qx, qy, qz, qw])，末端执行器目标姿态（四元数）。
+                - position: 末端执行器目标位置，形状(3,)
+                - quaternion: 末端执行器目标姿态，形状(4,) [x,y,z,w]
         """
-
-        # 获取抓取位置和接近方向
-        grasp_pos = grasp['position']
-        approach_dir = grasp['approach_direction']
         
-        # 转换到机器人基坐标系
-        grasp_pos_homo = np.array([grasp_pos[0], grasp_pos[1], grasp_pos[2], 1])
-        base_pos_homo = self.camera_to_base @ grasp_pos_homo
-        base_pos = base_pos_homo[:3]
-        logger.info(f"基座坐标系抓取位置: ({base_pos[0]:.3f}, {base_pos[1]:.3f}, {base_pos[2]:.3f})")
+        # 提取 AnyGrasp 传入的数据
+        grasp_pos_camera = grasp['position']  # 相机坐标系下的抓取位置
+        rotation_anygrasp = grasp['rotation_matrix']  # AnyGrasp坐标系的旋转矩阵
         
+        # AnyGrasp坐标系 → 末端执行器坐标系
+        # 在相机坐标系下，重组旋转矩阵的列向量，得到EE的坐标轴表示
+        rotation_ee_in_camera = rotation_anygrasp @ self.anygrasp_to_ee.T
+        
+        # 相机坐标系 → 基座坐标系
+        grasp_pos_homo = np.append(grasp_pos_camera, 1) # 转为齐次坐标
+        grasp_pos_base = (self.camera_to_base @ grasp_pos_homo)[:3]
+        
+        logger.info(f"\n基座坐标系抓取位置: [{grasp_pos_base[0]:.3f}, {grasp_pos_base[1]:.3f}, {grasp_pos_base[2]:.3f}]\n")
+        
+        rotation_ee_in_base = self.rotation_c2b @ rotation_ee_in_camera
+             
         # 计算接近位置
-        approach_dir_base = self.rotation_c2b @ approach_dir
-        approach_dir_base = approach_dir_base / np.linalg.norm(approach_dir_base)
-        approach_pos_base = base_pos - approach_dir_base * approach_distance
+        ee_z_axis_base = rotation_ee_in_base[:, 2]
+        ee_z_axis_base_normalized = ee_z_axis_base / np.linalg.norm(ee_z_axis_base)
         
-        # 将旋转矩阵转换为四元数
-        rotation_matrix_camera = grasp['rotation_matrix']
+        # 沿Z轴负方向后退，得到接近位置
+        approach_pos_base = grasp_pos_base - ee_z_axis_base_normalized * approach_distance
         
-        # 转换旋转矩阵到基座坐标系
-        rotation_matrix_base = self.rotation_c2b @ rotation_matrix_camera
+        logger.info(f"\n接近位置(基座): [{approach_pos_base[0]:.3f}, {approach_pos_base[1]:.3f}, {approach_pos_base[2]:.3f}]\n")
         
-        rotation = R.from_matrix(rotation_matrix_base)
-        quaternion = rotation.as_quat()
-        euler = rotation.as_euler('xyz', degrees=True)
-
-        logger.info(f"基座坐标系接近位置: ({approach_pos_base[0]}, {approach_pos_base[1]}, {approach_pos_base[2]})")
-        logger.info(f"基座坐标系接近姿态 (xyz, deg): ({euler[0]:.2f}, {euler[1]:.2f}, {euler[2]:.2f})")
+        # 转换为四元数和欧拉角
+        rotation_obj = R.from_matrix(rotation_ee_in_base)
+        quaternion = rotation_obj.as_quat()  # [x, y, z, w]
+        euler_xyz_deg = rotation_obj.as_euler('xyz', degrees=True)
+        
+        logger.info(f"  欧拉角XYZ(度):   [{euler_xyz_deg[0]:7.2f}, {euler_xyz_deg[1]:7.2f}, {euler_xyz_deg[2]:7.2f}]")
 
         return approach_pos_base, quaternion
 
