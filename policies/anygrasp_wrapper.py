@@ -9,6 +9,8 @@ import os
 import numpy as np
 import argparse
 import logging
+import open3d as o3d
+
 
 sys.path.append(os.path.expanduser('~/documents/anygrasp_sdk'))
 
@@ -111,8 +113,8 @@ class AnyGraspWrapper:
             logger.warning("[_rgbd_to_pointcloud] 深度图全为0！")
         
         # 创建有效点mask
-        # 假设工作距离在 0.1m 到 5.0m 之间
-        mask = (points_z > 0.1) & (points_z < 5.0)
+        # 假设工作距离在 0.9m 到 1.1m 之间
+        mask = (points_z > 0.9) & (points_z < 1.1)
         
         # 提取有效点和颜色
         points = np.stack([points_x, points_y, points_z], axis=-1)
@@ -215,7 +217,7 @@ class AnyGraspWrapper:
         # 检查点云是否为空
         if len(points) == 0:
             logger.warning("[AnyGraspWrapper] 点云为空，无法进行抓取检测")
-            return []
+            return [], None
         
         # 调用 AnyGrasp 推理
         logger.info("[AnyGraspWrapper] 调用 AnyGrasp 推理...")
@@ -226,6 +228,10 @@ class AnyGraspWrapper:
             dense_grasp=False,
             collision_detection=True
         )
+        
+        # 检查返回值
+        logger.info(f"[AnyGraspWrapper] get_grasp 返回: gg={type(gg).__name__}(len={len(gg) if gg is not None else 'None'}), "
+                   f"cloud={type(cloud).__name__ if cloud is not None else 'None'}")
         
         # 检查是否检测到抓取
         if len(gg) == 0:
@@ -243,6 +249,26 @@ class AnyGraspWrapper:
         
         # 转换为字典列表
         grasp_list = self._parse_grasp_group(gg_pick)
+
+        # visualization
+        if len(gg_pick) > 0:
+            if cloud is None:
+                logger.info("[AnyGraspWrapper] get_grasp 未返回点云，自己构建点云用于可视化")
+                cloud = o3d.geometry.PointCloud()
+                cloud.points = o3d.utility.Vector3dVector(points)
+                cloud.colors = o3d.utility.Vector3dVector(colors)
+            
+            trans_mat = np.array([[1,0,0,0],[0,1,0,0],[0,0,-1,0],[0,0,0,1]])
+            cloud.transform(trans_mat)
+            grippers = gg_pick.to_open3d_geometry_list()
+            if grippers is not None and len(grippers) > 0:
+                for gripper in grippers:
+                    gripper.transform(trans_mat)
+                o3d.visualization.draw_geometries([grippers[0], cloud])
+            else:
+                logger.warning("[AnyGraspWrapper] 无法生成夹爪几何体")
+        else:
+            logger.warning("[AnyGraspWrapper] 未检测到任何抓取，跳过可视化")
         
         return grasp_list
 
