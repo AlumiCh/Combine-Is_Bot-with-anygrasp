@@ -12,11 +12,11 @@ from scipy.spatial.transform import Rotation, Slerp
 # 导入 Policy 基类
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
-from policies import Policy
+from policies.policies import Policy
 
-from ik_solver import IKSolver
+from robot_controller.ik_solver import IKSolver
 from grasp_client import AnyGraspClient
-from robot_controller.grasp_converter import GraspConverter
+from anygrasp.grasp_converter import GraspConverter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -242,6 +242,12 @@ class GraspPolicy(Policy):
                 'arm_quat': quat,
                 'gripper_pos': np.array([0.0])
             })
+
+        # actions.append({
+        #     'arm_pos': grasp['ee_position'].copy(),
+        #     'arm_quat': grasp['ee_quaternion'].copy(),
+        #     'gripper_pos': np.array([0.0])
+        # })
         
         # 动作3 - 闭合夹爪
         actions.append({
@@ -254,20 +260,26 @@ class GraspPolicy(Policy):
         lift_pos = grasp['ee_position'].copy()
         lift_pos[2] += 0.1
         
-        lift_trajectory = self._interpolate_trajectory(
-            start_pos=grasp['ee_position'],
-            start_quat=grasp['ee_quaternion'],
-            end_pos=lift_pos,
-            end_quat=grasp['ee_quaternion'],
-            num_steps=5
-        )
+        # lift_trajectory = self._interpolate_trajectory(
+        #     start_pos=grasp['ee_position'],
+        #     start_quat=grasp['ee_quaternion'],
+        #     end_pos=lift_pos,
+        #     end_quat=grasp['ee_quaternion'],
+        #     num_steps=5
+        # )
         
-        for pos, quat in lift_trajectory:
-            actions.append({
-                'arm_pos': pos,
-                'arm_quat': quat,
-                'gripper_pos': np.array([1.0])
-            })
+        # for pos, quat in lift_trajectory:
+        #     actions.append({
+        #         'arm_pos': pos,
+        #         'arm_quat': quat,
+        #         'gripper_pos': np.array([1.0])
+        #     })
+
+        actions.append({
+            'arm_pos': grasp['ee_position'].copy(),
+            'arm_quat': lift_pos.copy(),
+            'gripper_pos': np.array([1.0])
+        })
         
         return actions
     
