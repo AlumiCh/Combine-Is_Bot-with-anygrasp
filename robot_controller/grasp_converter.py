@@ -64,7 +64,7 @@ class GraspConverter:
         grasp_pos_homo = np.array([grasp_pos[0], grasp_pos[1], grasp_pos[2], 1])
         base_pos_homo = self.camera_to_base @ grasp_pos_homo
         base_pos = base_pos_homo[:3]
-        logger.info(f"position: ({base_pos[0]}, {base_pos[1]}, {base_pos[2]})")
+        logger.info(f"基座坐标系抓取位置: ({base_pos[0]:.3f}, {base_pos[1]:.3f}, {base_pos[2]:.3f})")
         
         # 计算接近位置
         approach_dir_base = self.rotation_c2b @ approach_dir
@@ -72,14 +72,17 @@ class GraspConverter:
         approach_pos_base = base_pos - approach_dir_base * approach_distance
         
         # 将旋转矩阵转换为四元数
-        rotation_matrix_camera = grasp['rotation_matrix']    
+        rotation_matrix_camera = grasp['rotation_matrix']
+        
+        # 转换旋转矩阵到基座坐标系
         rotation_matrix_base = self.rotation_c2b @ rotation_matrix_camera
+        
         rotation = R.from_matrix(rotation_matrix_base)
         quaternion = rotation.as_quat()
         euler = rotation.as_euler('xyz', degrees=True)
 
-        logger.info(f"approach_position_base: ({approach_pos_base[0]}, {approach_pos_base[1]}, {approach_pos_base[2]})")
-        logger.info(f"approach_euler_base (xyz, deg): ({euler[0]:.2f}, {euler[1]:.2f}, {euler[2]:.2f})")
+        logger.info(f"基座坐标系接近位置: ({approach_pos_base[0]}, {approach_pos_base[1]}, {approach_pos_base[2]})")
+        logger.info(f"基座坐标系接近姿态 (xyz, deg): ({euler[0]:.2f}, {euler[1]:.2f}, {euler[2]:.2f})")
 
         return approach_pos_base, quaternion
 
