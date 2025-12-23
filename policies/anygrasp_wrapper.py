@@ -145,7 +145,7 @@ class AnyGraspWrapper:
             List[dict]: 抓取候选列表，每个元素包含：
                 - position: [x, y, z] 抓取位置
                 - approach_direction: [dx, dy, dz] 接近方向
-                - angle: 旋转角度
+                - rotation_matrix: 旋转矩阵
                 - width: 夹爪宽度
                 - score: 抓取评分
         """
@@ -153,6 +153,16 @@ class AnyGraspWrapper:
         if len(gg) == 0:
             logger.warning("GraspGroup 对象为空")
             return []
+        
+        # AnyGrasp 输出坐标系到标准相机坐标系的变换
+        # AnyGrasp 使用 Z 轴向下的坐标系，需要翻转 Z 轴
+        anygrasp_to_camera = np.array([
+            [1, 0,  0, 0],
+            [0, 1,  0, 0],
+            [0, 0, -1, 0],
+            [0, 0,  0, 1]
+        ])
+        rotation_transform = anygrasp_to_camera[:3, :3]  # 旋转部分
         
         # 限制抓取数量
         # num_grasps = min(len(gg), max_grasps)
@@ -178,17 +188,25 @@ class AnyGraspWrapper:
         grasp_list = []
         
         for i in range(num_grasps):
-            # 获取接近方向
-            approach_direction = rotation_matrices[i][:, 2] # 此处未知旋转矩阵的构建规则，假设是旋转变换矩阵
+            # 转换位置
+            pos_homo = np.append(positions[i], 1) # 转换为齐次坐标
+            transformed_pos_homo = anygrasp_to_camera @ pos_homo
+            transformed_pos = transformed_pos_homo[:3]
+            
+            # 转换旋转矩阵
+            transformed_rotation = rotation_transform @ rotation_matrices[i]
+            
+            # 获取接近方向（旋转矩阵的第3列，Z轴方向）
+            approach_direction = transformed_rotation[:, 2]
             
             # 归一化接近方向为单位向量
             approach_direction = approach_direction / np.linalg.norm(approach_direction)
             
             # 构造抓取字典
             grasp_dict = {
-                'position': positions[i].copy(),                # 三维坐标
+                'position': transformed_pos.copy(),             # 三维坐标
                 'approach_direction': approach_direction,       # 接近方向
-                'rotation_matrix': rotation_matrices[i].copy(), # 旋转矩阵
+                'rotation_matrix': transformed_rotation.copy(), # 旋转矩阵
                 'width': float(widths[i]),                      # 宽度
                 'score': float(scores[i])                       # 抓取分数
             }
@@ -258,6 +276,9 @@ class AnyGraspWrapper:
                 cloud.points = o3d.utility.Vector3dVector(points)
                 cloud.colors = o3d.utility.Vector3dVector(colors)
             
+            # 坐标系变换（Z轴翻转）
+            # 注意：这个变换已经在 _parse_grasp_group 中应用到抓取数据了
+            # 这里仅用于可视化
             trans_mat = np.array([[1,0,0,0],[0,1,0,0],[0,0,-1,0],[0,0,0,1]])
             cloud.transform(trans_mat)
             grippers = gg_pick.to_open3d_geometry_list()
