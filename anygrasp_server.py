@@ -8,6 +8,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 import numpy as np
 from cameras import RealSenseCamera
 from multiprocessing.managers import BaseManager as MPBaseManager
@@ -86,14 +87,20 @@ class AnyGraspService:
             # 获取图像
             rgb, depth = self.camera.get_rgb_depth()
             
+            # 等待几秒后执行predict
+            time.sleep(3)
+
+            # 获取图像
+            rgb, depth = self.camera.get_rgb_depth()
+            
             if rgb is None or depth is None:
                 logger.warning("[AnyGraspService] 相机数据无效，返回空列表")
                 return []
             
             logger.info(f"[AnyGraspService] 获取图像: rgb={rgb.shape}, depth={depth.shape}")
-
+            
             # 推理获取抓取
-            grasp_list = self.anygrasp.predict(rgb, depth)
+            grasp_list= self.anygrasp.predict(rgb, depth)
             
             logger.info(f"[AnyGraspService] 推理完成，返回 {len(grasp_list)} 个抓取")
             
