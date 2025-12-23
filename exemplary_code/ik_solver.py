@@ -49,7 +49,7 @@ class IKSolver:
         self.eye = np.eye(self.model.nv)
 
     def solve(self, pos, quat, curr_qpos, max_iters=20, err_thresh=1e-4):
-        quat = quat[[3, 0, 1, 2]]  # (x, y, z, w) -> (w, x, y, z)
+        # quat = quat[[3, 0, 1, 2]]  # (x, y, z, w) -> (w, x, y, z)
 
         # Set arm to initial joint configuration
         self.data.qpos = curr_qpos
