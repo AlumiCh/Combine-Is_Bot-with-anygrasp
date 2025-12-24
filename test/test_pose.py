@@ -8,6 +8,7 @@ import time
 import logging
 import os
 import sys
+from scipy.spatial.transform import Rotation as R
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -18,11 +19,21 @@ logger = logging.getLogger(__name__)
 
 def test_specific_pose():
     try:
-        logger.info("初始化 RealEnv...")
+        logger.info("\n初始化 RealEnv...\n")
         env = RealEnv()
         
-        logger.info("重置环境...")
+        logger.info("\n重置环境...\n")
         env.reset()
+        
+        # 获取并打印当前位姿
+        obs = env.get_obs()
+        curr_pos = obs['arm_pos']
+        curr_quat = obs['arm_quat']
+        curr_euler = R.from_quat(curr_quat).as_euler('xyz', degrees=True)
+        
+        logger.info(f"当前位置: {curr_pos}")
+        logger.info(f"当前姿态 (quat [x, y, z, w]): {curr_quat}")
+        logger.info(f"当前姿态 (euler [x, y, z] degrees): {curr_euler}\n")
         
         target_pos = np.array([0.25, 0.10, 0.1])
         
@@ -34,19 +45,20 @@ def test_specific_pose():
             'gripper_pos': np.array([0.0])
         }
         
-        logger.info(f"正在移动到目标位姿: pos={target_pos}, quat={target_quat}")
+        target_euler = R.from_quat(target_quat).as_euler('xyz', degrees=True)
+        logger.info(f"目标位置: {target_pos}")
+        logger.info(f"目标姿态 (quat [x, y, z, w]): {target_quat}")
+        logger.info(f"目标姿态 (euler [x, y, z] degrees): {target_euler}\n")
         
         env.step(action, wait_for_arrival=True, timeout=30)
         
-        logger.info("到达目标位姿。")
-        
         time.sleep(30)
         
-        logger.info("测试完成，正在重置并退出...")
+        logger.info("\n测试完成，正在重置并退出...\n")
         env.reset()
         
     except Exception as e:
-        logger.error(f"测试过程中发生错误: {e}")
+        logger.error(f"\n测试过程中发生错误: {e}\n")
     finally:
         pass
 
