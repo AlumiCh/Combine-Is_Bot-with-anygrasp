@@ -44,11 +44,11 @@ class GraspConverter:
         
         # AnyGrasp坐标系到机械臂末端执行器坐标系的变换
         # AnyGrasp坐标系：X轴=接近方向向外，Y轴=夹爪之间，Z轴=正交
-        # 机械臂末端执行器坐标系：Z轴=接近方向向内，X轴=夹爪之间，Y轴=正交
+        # 机械臂末端执行器坐标系：Z轴=接近方向，X轴=夹爪之间，Y轴=正交
         self.anygrasp_to_ee = np.array([
             [ 0,  1,  0],  # EE的X轴 = AnyGrasp的Y轴
             [ 0,  0,  1],  # EE的Y轴 = AnyGrasp的Z轴
-            [-1,  0,  0]   # EE的Z轴 = -AnyGrasp的X轴（向内）
+            [ 1,  0,  0]   # EE的Z轴 = -AnyGrasp的X轴
         ])
     
     def grasp_to_ee_pose(self, grasp, approach_distance=0.05):
@@ -102,7 +102,7 @@ class GraspConverter:
         quaternion = rotation_obj.as_quat()  # [x, y, z, w]
         euler_xyz_deg = rotation_obj.as_euler('xyz', degrees=True)
         
-        logger.info(f"  欧拉角XYZ(度):   [{euler_xyz_deg[0]:7.2f}, {euler_xyz_deg[1]:7.2f}, {euler_xyz_deg[2]:7.2f}]")
+        logger.info(f"\n欧拉角XYZ(度):   [{euler_xyz_deg[0]:7.2f}, {euler_xyz_deg[1]:7.2f}, {euler_xyz_deg[2]:7.2f}]\n")
 
         return approach_pos_base, quaternion
 
