@@ -31,9 +31,9 @@ def test_specific_pose():
         curr_quat = obs['arm_quat']
         curr_euler = R.from_quat(curr_quat).as_euler('xyz', degrees=True)
         
-        logger.info(f"当前位置: {curr_pos}")
-        logger.info(f"当前姿态 (quat [x, y, z, w]): {curr_quat}")
-        logger.info(f"当前姿态 (euler [x, y, z] degrees): {curr_euler}\n")
+        logger.info(f"当前位置: {np.round(curr_pos, 3)}")
+        logger.info(f"当前姿态 (quat [x, y, z, w]): {np.round(curr_quat, 3)}")
+        logger.info(f"当前姿态 (euler [x, y, z] degrees): {np.round(curr_euler, 3)}\n")
         
         target_pos = np.array([0.25, 0.10, 0.1])
         
@@ -46,13 +46,13 @@ def test_specific_pose():
         }
         
         target_euler = R.from_quat(target_quat).as_euler('xyz', degrees=True)
-        logger.info(f"目标位置: {target_pos}")
-        logger.info(f"目标姿态 (quat [x, y, z, w]): {target_quat}")
-        logger.info(f"目标姿态 (euler [x, y, z] degrees): {target_euler}\n")
+        logger.info(f"目标位置: {np.round(target_pos, 3)}")
+        logger.info(f"目标姿态 (quat [x, y, z, w]): {np.round(target_quat, 3)}")
+        logger.info(f"目标姿态 (euler [x, y, z] degrees): {np.round(target_euler, 3)}\n")
         
-        env.step(action, wait_for_arrival=True, timeout=30)
+        env.step(action, wait_for_arrival=True, timeout=15)
         
-        time.sleep(30)
+        time.sleep(10)
         
         logger.info("\n测试完成，正在重置并退出...\n")
         env.reset()

@@ -97,24 +97,24 @@ class RealEnv:
 
         # 目标位置
         target_pos = action['arm_pos']
-        logger.info(f"target position: {target_pos}")
+        logger.info(f"target position: {np.round(target_pos, 3)}")
 
         # 目标姿态
         target_quat = action['arm_quat']
         target_euler = R.from_quat(target_quat).as_euler('xyz', degrees=True)
-        logger.info(f"target euler (xyz, deg): {target_euler}")
+        logger.info(f"target euler (xyz, deg): {np.round(target_euler, 3)}")
 
         # 获取当前观测
         obs = self.get_obs()
 
         # 当前位置
         curr_pos = obs['arm_pos']
-        logger.info(f"current position: {curr_pos}")
+        logger.info(f"current position: {np.round(curr_pos, 3)}")
 
         # 当前姿态
         curr_quat = obs['arm_quat']
         curr_euler = R.from_quat(curr_quat).as_euler('xyz', degrees=True)
-        logger.info(f"current euler (xyz, deg): {curr_euler}")
+        logger.info(f"current euler (xyz, deg): {np.round(curr_euler, 3)}")
 
         # 如果需要等待到达
         if wait_for_arrival:
@@ -143,28 +143,28 @@ class RealEnv:
                 
                 # 检查是否到达目标位置
                 if position_error < position_threshold:
-                    logger.info(f"\n已到达目标位置，position误差: {position_error:.4f}m\n")
+                    logger.info(f"\n已到达目标位置，position误差: {position_error:.3f}m\n")
 
                     # 将弧度转换为度数并打印
-                    target_qpos_deg = np.round(np.rad2deg(target_qpos), 2) if target_qpos is not None else 'None'
-                    actual_qpos_deg = np.round(np.rad2deg(actual_qpos), 2)
+                    target_qpos_deg = np.round(np.rad2deg(target_qpos), 3) if target_qpos is not None else 'None'
+                    actual_qpos_deg = np.round(np.rad2deg(actual_qpos), 3)
                     logger.info(f"\n目标关节角度: {target_qpos_deg}\n")
                     logger.info(f"\n实际关节角度：{actual_qpos_deg}\n")
                     
-                    logger.info(f"\n姿态误差: {quaternion_error:.4f}\n")
+                    logger.info(f"\n姿态误差: {quaternion_error:.3f}\n")
                     break
                 
                 # 检查是否超时
                 if time.time() - start_time > timeout:
-                    logger.warning(f"\n等待超时 ({timeout}s)，当前position误差: {position_error:.4f}m\n")
+                    logger.warning(f"\n等待超时 ({timeout}s)，当前position误差: {position_error:.3f}m\n")
 
                     # 将弧度转换为度数并打印
-                    target_qpos_deg = np.round(np.rad2deg(target_qpos), 2) if target_qpos is not None else 'None'
-                    actual_qpos_deg = np.round(np.rad2deg(actual_qpos), 2)
+                    target_qpos_deg = np.round(np.rad2deg(target_qpos), 3) if target_qpos is not None else 'None'
+                    actual_qpos_deg = np.round(np.rad2deg(actual_qpos), 3)
                     logger.warning(f"\n目标关节角度: {target_qpos_deg}\n")
                     logger.warning(f"\n实际关节角度：{actual_qpos_deg}\n")
 
-                    logger.warning(f"\n当前姿态误差: {quaternion_error:.4f}\n")
+                    logger.warning(f"\n当前姿态误差: {quaternion_error:.3f}\n")
                     break
         else:
             self.arm.execute_action(action)   # 非阻塞
