@@ -11,6 +11,7 @@
 
 import queue
 import time
+import logging
 from multiprocessing.managers import BaseManager as MPBaseManager
 import numpy as np
 from robot_controller.gen3.arm_controller import JointCompliantController
@@ -23,6 +24,9 @@ sys.path.append(parent_dir)
 from configs.constants import ARM_RPC_HOST, ARM_RPC_PORT, RPC_AUTHKEY
 from robot_controller.ik_solver import IKSolver
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class Arm:
     def __init__(self):
@@ -33,6 +37,7 @@ class Arm:
         self.command_queue = queue.Queue(1)
         self.controller = None
         self.ik_solver = IKSolver(ee_offset=0.12)
+        self.target_qpos = None # 目标关节角
 
     def reset(self):
         # Stop low-level control
@@ -57,7 +62,28 @@ class Arm:
 
     def execute_action(self, action):
         qpos = self.ik_solver.solve(action["arm_pos"], action["arm_quat"], self.arm.q)
+
+        # 获取逆运动学求解器得到的关节角
+        self.target_qpos = qpos
+
         self.command_queue.put((qpos, action["gripper_pos"].item()))
+
+    def get_target_qpos(self):
+        """
+        获取逆运动学求解器得到的关节角
+
+        Returns:
+            target_qpos: 目标关节角
+        """
+
+        try:
+            if self.target_qpos is None:
+                logger.error("\n目标关节角为空\n")
+            else:
+                return self.target_qpos
+        except Exception as e:
+                logger.error(f'未正确获取目标关节角: {e}')
+                raise
 
     def get_state(self):
         arm_pos, arm_quat = self.arm.get_tool_pose()
@@ -66,7 +92,7 @@ class Arm:
         state = {
             "arm_pos": arm_pos,
             "arm_quat": arm_quat,
-            "gripper_pos": np.array([self.arm.gripper_pos]),
+            "gripper_pos": np.array([self.arm.gripper_pos])
         }
         return state
 
