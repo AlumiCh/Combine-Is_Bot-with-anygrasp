@@ -78,7 +78,7 @@ class RealEnv:
 
         print('[real_env-reset] 机器人已重置')
 
-    def step(self, action, wait_for_arrival=True, position_threshold=0.022, timeout=10.0):
+    def step(self, action, wait_for_arrival=True, position_threshold=0.02, timeout=10.0):
         """
         执行给定的动作。
 
@@ -115,7 +115,7 @@ class RealEnv:
         curr_quat = obs['arm_quat']
         curr_euler = R.from_quat(curr_quat).as_euler('xyz', degrees=True)
         logger.info(f"current euler (xyz, deg): {curr_euler}")
-        
+
         # 如果需要等待到达
         if wait_for_arrival:
             start_time = time.time()
