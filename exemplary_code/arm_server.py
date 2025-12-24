@@ -96,6 +96,20 @@ class Arm:
         }
         return state
 
+    def get_curr_qpos(self):
+        """
+        获取此时的关节角
+
+        Returns:
+            curr_qpos: 此时关节角
+        """
+
+        try:
+            return self.arm.q
+        except Exception as e:
+                logger.error(f'未正确获取此时的关节角: {e}')
+                raise
+
     def close(self):
         if self.arm.cyclic_running:
             time.sleep(0.75)  # Wait for arm to stop moving
