@@ -62,11 +62,31 @@ class Arm:
 
     def execute_action(self, action):
         qpos = self.ik_solver.solve(action["arm_pos"], action["arm_quat"], self.arm.q)
+        # qpos = self.ik_solver.solve_basic(action["arm_pos"], action["arm_quat"], self.arm.q)
 
         # 获取逆运动学求解器得到的关节角
         self.target_qpos = qpos
 
         self.command_queue.put((qpos, action["gripper_pos"].item()))
+
+    def solve_target_qpos(self, action):
+        """
+        only solve target qpos from ik_solver
+        """
+        qpos = self.ik_solver.solve(action["arm_pos"], action["arm_quat"], self.arm.q)
+
+        # 获取逆运动学求解器得到的关节角
+        self.target_qpos = qpos
+
+    def only_execute_action(self, qpos, action):
+        """
+        only execute action from previously solved target qpos
+        """
+        if self.target_qpos is None:
+            logger.error("\n目标关节角为空，无法执行动作\n")
+            raise ValueError("目标关节角为空，无法执行动作")
+        else:
+            self.command_queue.put((qpos, action["gripper_pos"].item()))
 
     def get_target_qpos(self):
         """
