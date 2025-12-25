@@ -47,7 +47,6 @@ class RealEnv:
         # RPC代理对象
         # self.base = base_manager.Base(max_vel=(0.5, 0.5, 1.57), max_accel=(0.5, 0.5, 1.57))
         self.arm = arm_manager.Arm()
-
         # 相机
         # self.base_camera = LogitechCamera(BASE_CAMERA_SERIAL)
         # self.wrist_camera = KinovaCamera()
@@ -92,6 +91,7 @@ class RealEnv:
             我们故意不在此处返回观测数据，以防止策略使用过时的数据。
         """
         # self.base.execute_action(action)  # 非阻塞
+
         # 执行动作
         print('[real_env-step] 执行动作...')
 
@@ -119,10 +119,15 @@ class RealEnv:
         # 如果需要等待到达
         if wait_for_arrival:
             start_time = time.time()
-            
+
+            self.arm.solve_target_qpos(action)
+
+            # 目标关节角
+            target_qpos = self.arm.get_target_qpos()
+
             while True:
                 # 发送控制指令（非阻塞）
-                self.arm.execute_action(action)
+                self.arm.only_execute_action(target_qpos, action)
 
                 time.sleep(0.046)
                 
@@ -137,9 +142,6 @@ class RealEnv:
 
                 # 计算姿态误差（四元数距离）
                 quaternion_error = np.linalg.norm(curr_quat - target_quat)
-
-                # 目标关节角
-                target_qpos = self.arm.get_target_qpos()
                 
                 # 检查是否到达目标位置
                 if position_error < position_threshold:
