@@ -220,34 +220,34 @@ class GraspPolicy(Policy):
         })
         
         # 动作2 - 移动到目标抓取的接近位置
-        # 计算当前位置到目标位置的距离
-        distance = np.linalg.norm(grasp['ee_position'] - obs['arm_pos'])
+        # # 计算当前位置到目标位置的距离
+        # distance = np.linalg.norm(grasp['ee_position'] - obs['arm_pos'])
 
-        # 根据距离自动调整插值步数
-        num_steps = max(10, int(distance / 0.05))
-        logger.info(f"[GraspPolicy] 距离: {distance:.3f}m, 插值步数: {num_steps}")
+        # # 根据距离自动调整插值步数
+        # num_steps = max(10, int(distance / 0.05))
+        # logger.info(f"[GraspPolicy] 距离: {distance:.3f}m, 插值步数: {num_steps}")
         
-        trajectory = self._interpolate_trajectory(
-            start_pos=obs['arm_pos'],
-            start_quat=obs['arm_quat'],
-            end_pos=grasp['ee_position'],
-            end_quat=grasp['ee_quaternion'],
-            num_steps=num_steps
-        )
+        # trajectory = self._interpolate_trajectory(
+        #     start_pos=obs['arm_pos'],
+        #     start_quat=obs['arm_quat'],
+        #     end_pos=grasp['ee_position'],
+        #     end_quat=grasp['ee_quaternion'],
+        #     num_steps=num_steps
+        # )
         
-        # 将插值路径点添加到动作序列
-        for pos, quat in trajectory:
-            actions.append({
-                'arm_pos': pos,
-                'arm_quat': quat,
-                'gripper_pos': np.array([0.0])
-            })
+        # # 将插值路径点添加到动作序列
+        # for pos, quat in trajectory:
+        #     actions.append({
+        #         'arm_pos': pos,
+        #         'arm_quat': quat,
+        #         'gripper_pos': np.array([0.0])
+        #     })
 
-        # actions.append({
-        #     'arm_pos': grasp['ee_position'].copy(),
-        #     'arm_quat': grasp['ee_quaternion'].copy(),
-        #     'gripper_pos': np.array([0.0])
-        # })
+        actions.append({
+            'arm_pos': grasp['ee_position'].copy(),
+            'arm_quat': grasp['ee_quaternion'].copy(),
+            'gripper_pos': np.array([0.0])
+        })
         
         # 动作3 - 闭合夹爪
         actions.append({
@@ -258,7 +258,7 @@ class GraspPolicy(Policy):
         
         # 动作4 - 提升物体
         lift_pos = grasp['ee_position'].copy()
-        lift_pos[2] += 0.1
+        lift_pos[2] += 0.2
         
         # lift_trajectory = self._interpolate_trajectory(
         #     start_pos=grasp['ee_position'],
@@ -276,8 +276,8 @@ class GraspPolicy(Policy):
         #     })
 
         actions.append({
-            'arm_pos': grasp['ee_position'].copy(),
-            'arm_quat': lift_pos.copy(),
+            'arm_pos': lift_pos.copy(),
+            'arm_quat': grasp['ee_quaternion'].copy(),
             'gripper_pos': np.array([1.0])
         })
         
