@@ -142,6 +142,7 @@ class HighLevelGraspController:
         """
         
         gripper_command = Base_pb2.GripperCommand()
+        gripper_command.mode = Base_pb2.GRIPPER_POSITION
         finger = gripper_command.gripper.finger.add()
         finger.finger_identifier = 1
         finger.value = value
@@ -293,7 +294,7 @@ def main():
     """
     主程序入口，解析参数并运行高层抓取控制器。
     """
-    
+
     args = utilities.parseConnectionArguments()
     
     # 创建连接并运行
