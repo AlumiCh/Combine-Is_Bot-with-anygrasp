@@ -38,7 +38,7 @@ from robot_controller.ik_solver import IKSolver
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TIMEOUT_DURATION = 20
+TIMEOUT_DURATION = 60
 
 class HighLevelGraspController:
     def __init__(self, router):
@@ -282,7 +282,7 @@ class HighLevelGraspController:
             self.reach_cartesian_pose(target_pos, target_quat)
             
             # 执行夹爪动作
-            target_gripper = action['gripper_pos'][0]
+            target_gripper = action['gripper_pos']
             # 将策略输出的连续值映射为二值控制指令
             cmd_val = 1.0 if target_gripper > 0.5 else 0.0
             self.send_gripper_command(cmd_val)
