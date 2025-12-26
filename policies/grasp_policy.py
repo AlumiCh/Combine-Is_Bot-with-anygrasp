@@ -14,9 +14,9 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 from policies.policies import Policy
 
-from robot_controller.ik_solver import IKSolver
-from grasp_client import AnyGraspClient
-from anygrasp.grasp_converter import GraspConverter
+from ik_solver import IKSolver
+from policies.anygrasp_wrapper import AnyGraspWrapper
+from robot_controller.grasp_converter import GraspConverter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -219,7 +219,18 @@ class GraspPolicy(Policy):
             'gripper_pos': np.array(0.0)
         })
         
-        # 动作2 - 移动到目标抓取的接近位置
+        # 动作2  - 移动到距离抓取接近位置 10cm 的地方 (预接近点)
+        r = Rotation.from_quat(grasp['ee_quaternion'])
+        approach_vector = r.apply([0, 0, 1]) # 获取 Z 轴向量
+        pre_approach_pos = grasp['ee_position'] - 0.10 * approach_vector
+        
+        actions.append({
+            'arm_pos': pre_approach_pos,
+            'arm_quat': grasp['ee_quaternion'].copy(),
+            'gripper_pos': np.array([0.0])
+        })
+
+        # 动作3 - 移动到目标抓取的接近位置
         # # 计算当前位置到目标位置的距离
         # distance = np.linalg.norm(grasp['ee_position'] - obs['arm_pos'])
 
