@@ -51,7 +51,7 @@ class GraspConverter:
             [ 1,  0,  0]   # EE的Z轴 = -AnyGrasp的X轴
         ])
     
-    def grasp_to_ee_pose(self, grasp, approach_distance=0.05):
+    def grasp_to_ee_pose(self, grasp, approach_distance=0.03):
         """
         将抓取候选转换为末端执行器目标位姿
         
