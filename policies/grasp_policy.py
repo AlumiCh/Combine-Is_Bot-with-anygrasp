@@ -14,9 +14,9 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 from policies.policies import Policy
 
-from ik_solver import IKSolver
-from policies.anygrasp_wrapper import AnyGraspWrapper
-from robot_controller.grasp_converter import GraspConverter
+from robot_controller.ik_solver import IKSolver
+from grasp_client import AnyGraspClient
+from anygrasp.grasp_converter import GraspConverter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
