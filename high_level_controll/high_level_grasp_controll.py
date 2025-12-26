@@ -196,7 +196,33 @@ class HighLevelGraspController:
         self.base.Unsubscribe(notification_handle)
         
         if finished:
-            logger.info("移动完成。")
+            logger.info("移动完成。\n")            
+            # 打印详细的运动分析信息
+            try:
+                feedback = self.base_cyclic.RefreshFeedback()
+                current_pos = np.array([
+                    feedback.base.tool_pose_x,
+                    feedback.base.tool_pose_y,
+                    feedback.base.tool_pose_z
+                ])
+                current_euler = np.array([
+                    feedback.base.tool_pose_theta_x,
+                    feedback.base.tool_pose_theta_y,
+                    feedback.base.tool_pose_theta_z
+                ])
+                
+                # 计算偏差
+                pos_diff = np.linalg.norm(current_pos - target_pos)
+                euler_diff = np.linalg.norm(current_euler - euler_angles)
+                
+                logger.info(f"目标位置(cm)  : {target_pos * 100}")
+                logger.info(f"当前位置(cm)  : {current_pos * 100}")
+                logger.info(f"位置偏差(cm)  : {pos_diff * 100:.4f}")
+                logger.info(f"目标欧拉角(deg): {euler_angles}")
+                logger.info(f"当前欧拉角(deg): {current_euler}")
+                logger.info(f"欧拉角偏差(deg): {euler_diff:.4f}\n")
+            except Exception as err:
+                logger.warning(f"\n无法获取反馈信息以打印分析: {err}\n")
         else:
             logger.warning("移动超时。")
         return finished
