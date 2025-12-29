@@ -27,3 +27,4 @@ Traceback (most recent call last):
   File "/home/cuhk/miniconda3/envs/isbot/lib/python3.10/concurrent/futures/_base.py", line 403, in __get_result
     raise self._exception
 kortex_api.Exceptions.KServerException.KServerException: Server error name=ERROR_DEVICE, sub name=INVALID_PARAM => Failed to execute gripper command: Argument Invalid 
+https://msub.xn--m7r52rosihxm.com/api/v1/client/subscribe?token=36b1d43a3543a98b0c337d3fd0c09a83
