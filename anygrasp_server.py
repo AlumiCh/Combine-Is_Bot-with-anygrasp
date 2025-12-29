@@ -139,7 +139,7 @@ if __name__ == '__main__':
     top_down_grasp = False   # 是否只检测俯视抓取
     xmin, xmax = -0.3, 0.3
     ymin, ymax = -0.4, -0.1
-    zmin, zmax = 0.8, 1.1
+    zmin, zmax = 0.75, 0.96
     workspace_limits = [xmin, xmax, ymin, ymax, zmin, zmax] # 工作空间限制 [xmin, xmax, ymin, ymax, zmin, zmax]
     
     cfgs = argparse.Namespace(
