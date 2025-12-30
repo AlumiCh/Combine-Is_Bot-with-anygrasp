@@ -1,11 +1,11 @@
 """
-基于 Kortex API (High-Level) 的 AnyGrasp 抓取控制器
+基于 Kortex API (High-Level) 的抓取控制器
 使用 utilities.py 进行连接管理
 
 功能：
 1. 使用 BaseClient 发送 High-Level Action (ReachPose)
 2. 利用机械臂内部控制器保证毫米级定位精度
-3. 结合 AnyGrasp 进行视觉抓取
+3. 结合 AnyGrasp, GraspGen 进行视觉抓取
 """
 
 import sys
