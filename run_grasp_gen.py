@@ -38,6 +38,13 @@ logger = logging.getLogger("rich")
 
 TIMEOUT_DURATION = 20
 
+# 全局变量用于鼠标回调
+selected_points = []
+def mouse_callback(event, x, y, flags, param):
+    if event == cv2.EVENT_LBUTTONDOWN:
+        selected_points.append([x, y])
+        logger.info(f"Selected point: {x}, {y}")
+
 class GraspSystem:
     def __init__(self, router):
         """
@@ -92,6 +99,47 @@ class GraspSystem:
         # 可视化器
         self.vis = o3d.visualization.Visualizer()
         self.vis.create_window()
+
+    def get_user_prompt(self, rgb):
+        """
+        显示图像并允许用户点击选择物体。
+        Args:
+            rgb: RGB 图像
+        Returns:
+            points: (N, 2) 用户点击的点
+            labels: (N,) 对应的标签 (全为1)
+        """
+        global selected_points
+        selected_points = []
+        
+        # OpenCV 需要 BGR 格式显示
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        
+        window_name = "Select Object (Click points, then press 'q')"
+        cv2.namedWindow(window_name)
+        cv2.setMouseCallback(window_name, mouse_callback)
+        
+        logger.info("请在图像中点击要抓取的物体，按 'q' 确认...")
+        
+        while True:
+            img_disp = bgr.copy()
+            # 绘制已选点
+            for pt in selected_points:
+                cv2.circle(img_disp, tuple(pt), 5, (0, 255, 0), -1)
+            
+            cv2.imshow(window_name, img_disp)
+            
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+        
+        cv2.destroyWindow(window_name)
+        
+        if not selected_points:
+            logger.warning("未选择任何点，将使用默认中心点策略")
+            return None, None
+            
+        return np.array(selected_points), np.ones(len(selected_points))
 
     def get_robot_state(self):
         """
@@ -291,13 +339,15 @@ class GraspSystem:
         self.base.Unsubscribe(notification_handle)
         return finished
     
-    def _rgbd_to_pointcloud(self, rgb, depth):
+    def _rgbd_to_pointcloud(self, rgb, depth, prompt_points=None, prompt_labels=None):
         """
         将 RGB-D 图像转换为分割的点云。
 
         Args:
-            rgb (np.ndarray): 颜色信息，形状为 [H, W, 3]，类型为 uint8。
+            rgb (np.ndarray): 颜色信息，形状为 [H, W, 3]，类型为 uint8 (RGB格式)。
             depth (np.ndarray): 深度信息，形状为 [H, W]，类型为 float32。
+            prompt_points: 提示点
+            prompt_labels: 提示标签
 
         Returns:
             tuple:
@@ -311,10 +361,10 @@ class GraspSystem:
         assert depth.ndim == 2
 
         # 生成分割点云的掩码
-        mask_seg = self.seg_model.segment(rgb)
+        mask_seg = self.seg_model.segment(rgb, point_coords=prompt_points, point_labels=prompt_labels)
 
         # 显示分割结果
-        # cv2.imshow("Mask", (mask_seg * 255).astype(np.uint8)); cv2.waitKey(1)
+        cv2.imshow("Mask", (mask_seg * 255).astype(np.uint8)); cv2.waitKey(1)
         
         # 生成点云
         xmap, ymap = np.arange(depth.shape[1]), np.arange(depth.shape[0])
@@ -403,18 +453,27 @@ class GraspSystem:
         logger.info("正在获取点云...")
 
         # 获取图像
-        rgb, depth = self.camera.get_rgb_depth()
+        bgr, depth = self.camera.get_rgb_depth()
         # 等待几秒后执行predict
         time.sleep(3)
         # 再次获取图像以确保深度与 RGB 对齐的图像没问题
-        rgb, depth = self.camera.get_rgb_depth()
+        bgr, depth = self.camera.get_rgb_depth()
 
-        if rgb is None or depth is None:
+        if bgr is None or depth is None:
                 logger.warning("[AnyGraspService] 相机数据无效，返回空列表")
                 return []
         
+        # 转换为 RGB
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+        # 获取用户提示
+        points_prompt, labels_prompt = self.get_user_prompt(rgb)
+        if points_prompt is None:
+            logger.warning("用户取消或未选择点")
+            return [], None
+
         # 生成点云
-        points, colors = self._rgbd_to_pointcloud(rgb, depth)
+        points, colors = self._rgbd_to_pointcloud(rgb, depth, points_prompt, labels_prompt)
 
         # 检查点云是否为空
         if len(points) == 0:
