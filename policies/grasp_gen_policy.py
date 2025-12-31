@@ -135,16 +135,18 @@ class GraspGenPolicy:
             # 提取位置和姿态
             position = T_base_grasp[:3, 3]
             rotation_matrix = T_base_grasp[:3, :3]
-            
-            # 过滤掉从下方接近的抓取
-            approach_vector = rotation_matrix[:3, 2]
-            if approach_vector[2] > -0.1:
+            # 将旋转矩阵转换为欧拉角（xyz 顺序，单位度）
+            r = R.from_matrix(rotation_matrix)
+            euler_xyz = r.as_euler('xyz', degrees=True)
+            roll_x = euler_xyz[0]
+
+            # 过滤掉方向向上的抓取
+            if not (-90 <= roll_x <= 90):
                 continue
 
             # 构造一个包含必要信息的字典返回
-            r = R.from_matrix(rotation_matrix)
-            quat = r.as_quat() # [x, y, z, w]
-            
+            quat = r.as_quat()  # [x, y, z, w]
+
             processed_grasps.append({
                 'arm_pos': position,
                 'arm_quat': quat,
@@ -158,7 +160,6 @@ class GraspGenPolicy:
             
         # 按分数降序排序
         processed_grasps.sort(key=lambda x: x['score'], reverse=True)
-        
         return processed_grasps[0]
 
     def _generate_action_sequence(self, grasp_pose, obs):
