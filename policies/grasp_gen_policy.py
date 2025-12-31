@@ -35,6 +35,7 @@ class GraspGenPolicy:
         self.state = 'DETECTING'
         self.action_sequence = []
         self.action_index = 0
+        self.latest_grasps = []
 
     def reset(self):
         """
@@ -46,6 +47,7 @@ class GraspGenPolicy:
         self.state = 'DETECTING'
         self.action_sequence = []
         self.action_index = 0
+        self.latest_grasps = []
         logger.info("策略已重置")
 
     def step(self, obs, point_cloud=None):
@@ -122,6 +124,7 @@ class GraspGenPolicy:
         Returns:
             dict or None: 最佳抓取的末端执行器位姿字典（包含 arm_pos, arm_quat, score），或 None。
         """
+        processed_grasps = []
         for grasp in grasps:
             # 获取相机坐标系下的位姿矩阵
             T_camera_grasp = np.array(grasp['matrix'])
@@ -137,13 +140,21 @@ class GraspGenPolicy:
             r = R.from_matrix(rotation_matrix)
             quat = r.as_quat() # [x, y, z, w]
             
-            return {
+            processed_grasps.append({
                 'arm_pos': position,
                 'arm_quat': quat,
                 'score': grasp['score']
-            }
+            })
             
-        return None
+        self.latest_grasps = processed_grasps
+        
+        if not processed_grasps:
+            return None
+            
+        # 按分数降序排序
+        processed_grasps.sort(key=lambda x: x['score'], reverse=True)
+        
+        return processed_grasps[0]
 
     def _generate_action_sequence(self, grasp_pose, obs):
         """
