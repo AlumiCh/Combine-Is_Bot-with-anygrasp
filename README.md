@@ -65,5 +65,42 @@ python scripts/demo_scene_pc.py --sample_data_dir data/test_data --gripper_confi
 
 请尝试操作，如果卡在某一步，请把报错信息发给我。
 
+sudo apt-get update && sudo apt-get upgrade -y
+
+sudo apt-get install -y ca-certificates curl gnupg lsb-release  # 必备依赖
+
+docker --version  # 输出Docker版本，如20.10.21
+
+sudo systemctl status docker  # 确认Docker服务运行中
+
+sudo apt-get purge -y nvidia-docker nvidia-container-runtime  # 清除历史版本
+
+sudo rm -rf /etc/apt/sources.list.d/nvidia-docker.list  # 删除旧源
+
+# 导入GPG密钥（与Ubuntu 20.04通用，但需重新执行确保生效）
+
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+# 添加Ubuntu 22.04（jammy）专属源
+
+curl -s -L https://nvidia.github.io/libnvidia-container/ubuntu22.04/libnvidia-container.list | \\
+
+sed 's#deb https://#deb \[signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \\
+
+sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+# 更新源并安装核心插件
+
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+
+# 生成Docker配置文件（自动关联GPU驱动）
+
+sudo nvidia-ctk runtime configure --runtime=docker
+
+# 重启Docker服务使配置生效
+
+sudo systemctl restart docker
+
+sudo docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
 
 https://msub.xn--m7r52rosihxm.com/api/v1/client/subscribe?token=36b1d43a3543a98b0c337d3fd0c09a83
