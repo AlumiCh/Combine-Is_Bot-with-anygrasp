@@ -9,6 +9,12 @@ import argparse
 import open3d as o3d
 import cv2
 from scipy.spatial.transform import Rotation as R
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.abspath(os.path.join(current_dir, '..'))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
 from segmentation import SAM2Wrapper
 
 # 导入 Kortex API 相关
@@ -79,8 +85,8 @@ class GraspSystem:
 
         # 初始化 SAM2
         self.seg_model = SAM2Wrapper(
-            checkpoint_path="checkpoints/sam2_hiera_large.pt",
-            model_cfg="sam2_hiera_l.yaml"
+            checkpoint_path="sam2/checkpoints/sam2.1_hiera_large.pt",
+            model_cfg="configs/sam2.1/sam2.1_hiera_l.yaml"
         )
 
         # 可视化器
@@ -308,7 +314,7 @@ class GraspSystem:
         mask_seg = self.seg_model.segment(rgb)
 
         # 显示分割结果
-        cv2.imshow("Mask", (mask_seg * 255).astype(np.uint8)); cv2.waitKey(1)
+        # cv2.imshow("Mask", (mask_seg * 255).astype(np.uint8)); cv2.waitKey(1)
         
         # 生成点云
         xmap, ymap = np.arange(depth.shape[1]), np.arange(depth.shape[0])
@@ -325,7 +331,7 @@ class GraspSystem:
             logger.warning("\n[_rgbd_to_pointcloud] 深度图全为0！\n")
         
         # 创建有效点mask
-        mask = (points_z > 0.75) & (points_z < 0.96) & mask_seg
+        mask = (points_z > 0.9) & (points_z < 1.1) & mask_seg
         
         # 提取有效点和颜色
         points = np.stack([points_x, points_y, points_z], axis=-1)
