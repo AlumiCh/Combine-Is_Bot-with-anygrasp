@@ -6,7 +6,10 @@ from rich.logging import RichHandler
 import logging
 import threading
 import argparse
+import open3d as o3d
+import cv2
 from scipy.spatial.transform import Rotation as R
+from segmentation import SAM2Wrapper
 
 # 导入 Kortex API 相关
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
@@ -73,6 +76,16 @@ class GraspSystem:
             grasp_gen_host='localhost',
             grasp_gen_port=60000
         )
+
+        # 初始化 SAM2
+        self.seg_model = SAM2Wrapper(
+            checkpoint_path="checkpoints/sam2_hiera_large.pt",
+            model_cfg="sam2_hiera_l.yaml"
+        )
+
+        # 可视化器
+        self.vis = o3d.visualization.Visualizer()
+        self.vis.create_window()
 
     def get_robot_state(self):
         """
@@ -274,7 +287,7 @@ class GraspSystem:
     
     def _rgbd_to_pointcloud(self, rgb, depth):
         """
-        将 RGB-D 图像转换为点云。
+        将 RGB-D 图像转换为分割的点云。
 
         Args:
             rgb (np.ndarray): 颜色信息，形状为 [H, W, 3]，类型为 uint8。
@@ -290,6 +303,12 @@ class GraspSystem:
         assert rgb.ndim == 3 and rgb.shape[2] == 3
         assert rgb.dtype == np.uint8
         assert depth.ndim == 2
+
+        # 生成分割点云的掩码
+        mask_seg = self.seg_model.segment(rgb)
+
+        # 显示分割结果
+        cv2.imshow("Mask", (mask_seg * 255).astype(np.uint8)); cv2.waitKey(1)
         
         # 生成点云
         xmap, ymap = np.arange(depth.shape[1]), np.arange(depth.shape[0])
@@ -306,7 +325,7 @@ class GraspSystem:
             logger.warning("\n[_rgbd_to_pointcloud] 深度图全为0！\n")
         
         # 创建有效点mask
-        mask = (points_z > 0.75) & (points_z < 0.96)
+        mask = (points_z > 0.75) & (points_z < 0.96) & mask_seg
         
         # 提取有效点和颜色
         points = np.stack([points_x, points_y, points_z], axis=-1)
@@ -324,6 +343,42 @@ class GraspSystem:
                        f"z=[{points[:, 2].min():.3f}, {points[:, 2].max():.3f}]")
         
         return points, colors
+    
+    def visualize_grasps(self, points, colors, grasps):
+        """
+        可视化点云和抓取
+        Args:
+            points: (N, 3) numpy array
+            colors: (N, 3) numpy array
+            grasps: list of dicts (from policy)
+        """
+        self.vis.clear_geometries()
+        
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+        if colors is not None and len(colors) > 0:
+            pcd.colors = o3d.utility.Vector3dVector(colors)
+            
+        self.vis.add_geometry(pcd)
+        
+        for grasp in grasps:
+            # 创建抓取坐标系或模型
+            # 画一个坐标轴
+            mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                size=0.1, origin=[0, 0, 0])
+            
+            # 构建变换矩阵
+            T = np.eye(4)
+            T[:3, 3] = grasp['arm_pos']
+            r = R.from_quat(grasp['arm_quat'])
+            T[:3, :3] = r.as_matrix()
+            
+            mesh_frame.transform(T)
+            self.vis.add_geometry(mesh_frame)
+            
+        self.vis.poll_events()
+        self.vis.update_renderer()
+        # self.vis.run() # 如果想暂停查看，取消注释
 
     def run_episode(self):
         """
@@ -360,6 +415,9 @@ class GraspSystem:
             logger.warning("[AnyGraspWrapper] 点云为空，无法进行抓取检测")
             return [], None
         
+        # 可视化原始点云
+        self.visualize_grasps(points, colors, [])
+        
         step_count = 0
         while step_count < 20:
             obs = self.get_robot_state()
@@ -368,6 +426,10 @@ class GraspSystem:
             pc_input = points if self.policy.state == 'DETECTING' else None
             
             action = self.policy.step(obs, point_cloud=pc_input)
+            
+            # 如果刚刚完成了检测，可视化抓取
+            if self.policy.state == 'EXECUTING' and pc_input is not None:
+                 self.visualize_grasps(points, colors, self.policy.latest_grasps)
             
             if action == 'end_episode':
                 logger.info("任务完成")
