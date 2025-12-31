@@ -132,6 +132,13 @@ class GraspGenPolicy:
             # 转换到基座坐标系
             T_base_grasp = self.camera_to_base @ T_camera_grasp
             
+            # 修正坐标系：GraspGen 输出通常 X 轴为接近方向，而 Kinova 需要 Z 轴为接近方向
+            # 需要绕 Y 轴旋转 90 度，使 X 轴变为 Z 轴
+            # R_correction = Ry(90)
+            # T_base_ee = T_base_grasp @ T_correction
+            r_correction = R.from_euler('y', 90, degrees=True).as_matrix()
+            T_base_grasp[:3, :3] = T_base_grasp[:3, :3] @ r_correction
+
             # 提取位置和姿态
             position = T_base_grasp[:3, 3]
             rotation_matrix = T_base_grasp[:3, :3]
