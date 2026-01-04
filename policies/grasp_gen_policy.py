@@ -125,7 +125,7 @@ class GraspGenPolicy:
             dict or None: 最佳抓取的末端执行器位姿字典（包含 arm_pos, arm_quat, score），或 None。
         """
         processed_grasps = []
-        for grasp in grasps:
+        for i, grasp in enumerate(grasps):
             # 获取相机坐标系下的位姿矩阵
             T_camera_grasp = np.array(grasp['matrix'])
             
@@ -135,6 +135,11 @@ class GraspGenPolicy:
             # 提取位置和姿态
             position = T_base_grasp[:3, 3]
             rotation_matrix = T_base_grasp[:3, :3]
+            
+            # 记录第一个抓取的变换结果
+            if i == 0:
+                logger.info(f"[坐标变换调试] 基座坐标系抓取位置: {position}")
+                logger.info(f"[坐标变换调试] camera_to_base变换矩阵:\n{self.camera_to_base}")
             # 将旋转矩阵转换为欧拉角（xyz 顺序，单位度）
             r = R.from_matrix(rotation_matrix)
             euler_xyz = r.as_euler('xyz', degrees=True)
