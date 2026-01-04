@@ -1,106 +1,62 @@
-没问题，欢迎回到实验室！既然你对 Docker 不太熟悉，我将一步步教你如何操作。
-
-### 1. 什么是 Docker？（简单理解）
-你可以把 Docker 想象成一个**轻量级的虚拟机**。
-*   **镜像 (Image)**：就像是操作系统的安装光盘（或者游戏的安装包）。里面包含了运行程序所需的一切（Ubuntu 系统、Python、PyTorch、GraspGen 代码等）。
-*   **容器 (Container)**：就像是安装好并正在运行的系统（或者正在玩的游戏存档）。你是通过运行镜像来创建容器的。
-
-### 2. 你的现状
-*   你已经安装好了 GraspGen 的 Docker **镜像**（通过 `docker build` 命令，或者你之前说的“安装完毕”）。
-*   你需要启动一个 **容器** 来运行里面的代码。
-
-### 3. 操作步骤 (Step-by-Step)
-
-请打开你的终端（Terminal），按照以下步骤操作：
-
-#### 第一步：查看镜像列表
-首先，我们要确认你之前构建的镜像叫什么名字。运行：
-```bash
-docker images
-```
-你应该能看到一个列表。找一下有没有叫 graspgen 或者类似的 REPOSITORY 名字。如果没有，可能你需要重新构建（参考 README 的 `bash docker/build.sh`）。假设镜像名字叫 `graspgen:latest`（或者 graspgen）。
-
-#### 第二步：启动容器 (关键步骤)
-我们需要启动容器，并做两件重要的事情：
-1.  **挂载目录 (`-v`)**：把宿主机（你现在的电脑）上的 GraspGen 代码文件夹映射到容器里，这样你在外面改代码，容器里也能看到。
-2.  **启用 GPU (`--gpus all`)**：让容器能使用显卡。
-3.  **端口映射 (`-p`)**：如果你要跑 RPC 服务，需要把容器端口映射出来（跑 Demo 暂时不需要，但为了后续方便，建议加上）。
-4.  **交互模式 (`-it`)**：让你能进入容器的命令行。
-
-假设你在 GraspGen 项目的根目录下，运行以下命令：
-
-```bash
-# 请根据实际情况修改路径
-# $PWD 代表当前目录 (Linux)，Windows PowerShell 用 ${PWD}
-docker run -it --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -v ${PWD}:/workspace/GraspGen -p 60000:60000 graspgen:latest /bin/bash
-```
-
-*   `-v ${PWD}:/workspace/GraspGen`: 把你当前电脑的 GraspGen 文件夹挂载到容器里的 `/workspace/GraspGen`。
-*   `-p 60000:60000`: 映射 60000 端口（为之后的 RPC 做准备）。
-*   `graspgen:latest`: 镜像名字，如果你的不一样请替换。
-
-**如果成功**，你的终端提示符会变成类似 `root@xxxxxx:/workspace/GraspGen#`，说明你已经进入容器内部了！
-
-#### 第三步：在容器内准备环境
-进入容器后，你可能需要安装一下项目（如果镜像里没装的话）：
-```bash
-cd /workspace/GraspGen
-pip install -e .
-```
-(如果之前构建镜像时已经装好了，这一步可能不需要，或者会很快完成)
-
-#### 第四步：运行 Demo
-现在你可以尝试运行 Demo 了。
-```bash
-# 确保你在 /workspace/GraspGen 目录下
-python scripts/demo_scene_pc.py --sample_data_dir data/test_data --gripper_config config/grippers/robotiq_2f_85.yaml
-```
-*   注意：`data/test_data` 是示例数据的路径，你需要确认这个路径下有数据。如果没有，可能需要先运行 `python scripts/download_objects.py` 或者手动下载数据。
-
-### 常见问题排查
-
-1.  **报错 `docker: command not found`**: 说明没装 Docker 或者没加到环境变量。
-2.  **报错 `could not select device driver`**: 说明 NVIDIA Container Toolkit 没装好，Docker 无法调用显卡。
-3.  **找不到数据**: 检查宿主机的 GraspGen 文件夹里是否有数据，因为我们挂载了目录，容器里应该能看到一样的内容。
-
-请尝试操作，如果卡在某一步，请把报错信息发给我。
-
-sudo apt-get update && sudo apt-get upgrade -y
-
-sudo apt-get install -y ca-certificates curl gnupg lsb-release  # 必备依赖
-
-docker --version  # 输出Docker版本，如20.10.21
-
-sudo systemctl status docker  # 确认Docker服务运行中
-
-sudo apt-get purge -y nvidia-docker nvidia-container-runtime  # 清除历史版本
-
-sudo rm -rf /etc/apt/sources.list.d/nvidia-docker.list  # 删除旧源
-
-# 导入GPG密钥（与Ubuntu 20.04通用，但需重新执行确保生效）
-
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-
-# 添加Ubuntu 22.04（jammy）专属源
-
-curl -s -L https://nvidia.github.io/libnvidia-container/ubuntu22.04/libnvidia-container.list | \\
-
-sed 's#deb https://#deb \[signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \\
-
-sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-
-# 更新源并安装核心插件
-
-sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-
-# 生成Docker配置文件（自动关联GPU驱动）
-
-sudo nvidia-ctk runtime configure --runtime=docker
-
-# 重启Docker服务使配置生效
-
-sudo systemctl restart docker
-
-sudo docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
+(isbot) cuhk@cuhk-System-Product-Name:~/ZMAI/IS_Bot$ python ./high_level_controll/run_grasp_gen.py
+Logging as admin on device 192.168.8.10
+[12:25:50] INFO     正在初始化相机...                                                                                                                               run_grasp_gen.py:61
+[12:25:51] INFO     [RealSenseCamera] Depth scale: 0.0010000000474974513                                                                                                 cameras.py:216
+           INFO     [RealSenseCamera] 相机内参: fx=605.85, fy=605.72                                                                                                     cameras.py:232
+           INFO     正在连接 GraspGen 服务器: http://localhost:60000                                                                                             grasp_gen_policy.py:31
+[12:25:52] INFO     Loaded checkpoint sucessfully                                                                                                                      build_sam.py:174
+[12:25:53] INFO     开始抓取任务                                                                                                                                   run_grasp_gen.py:493
+           INFO                                                                                                                                                    run_grasp_gen.py:304
+                    移动至 Retract 预设位置...                                                                                                                                         
+                                                                                                                                                                                       
+[12:25:56] INFO     策略已重置                                                                                                                                   grasp_gen_policy.py:51
+           INFO     正在获取点云...                                                                                                                                run_grasp_gen.py:500
+[12:25:59 PM] INFO     请在图像中点击要抓取的物体，按 'q' 确认...                                                                                                  run_grasp_gen.py:120
+[12:26:02 PM] INFO     Selected point: 398, 69                                                                                                                      run_grasp_gen.py:46
+[12:26:03 PM] INFO     For numpy array image, we assume (HxWxC) format                                                                                      sam2_image_predictor.py:102
+              INFO     Computing image embeddings for the provided image...                                                                                 sam2_image_predictor.py:116
+              INFO     Image embeddings computed.                                                                                                           sam2_image_predictor.py:129
+              INFO     [_rgbd_to_pointcloud] 深度范围: 0.313m ~ 2.149m                                                                                             run_grasp_gen.py:377
+              INFO     [_rgbd_to_pointcloud] 点云坐标范围: x=[0.081, 0.154], y=[-0.324, -0.243], z=[0.983, 1.005]                                                  run_grasp_gen.py:394
+              INFO     发送点云数据 (1823 points) 到 GraspGen...                                                                                                 grasp_gen_policy.py:88
+              INFO     收到 44 个抓取候选                                                                                                                       grasp_gen_policy.py:101
+              INFO     [visualize_grasps] 显示最佳抓取，基座坐标系位置: [0.38503251 0.00521566 0.01843972]                                                         run_grasp_gen.py:463
+[12:26:16 PM] INFO                                                                                                                                                 run_grasp_gen.py:553
+                       执行动作: 1                                                                                                                                                     
+                                                                                                                                                                                       
+[Errno 32] 断开的管道
+[TCPTransport.send] ERROR: None
+              ERROR    An error occurred: [Errno 32] 断开的管道                                                                                                    run_grasp_gen.py:577
+                       Traceback (most recent call last):                                                                                                                              
+                         File "/home/cuhk/ZMAI/IS_Bot/./high_level_controll/run_grasp_gen.py", line 573, in main                                                                       
+                           system.run_episode()                                                                                                                                        
+                         File "/home/cuhk/ZMAI/IS_Bot/./high_level_controll/run_grasp_gen.py", line 554, in run_episode                                                                
+                           self.move_cartesian(action['arm_pos'], action['arm_quat'])                                                                                                  
+                         File "/home/cuhk/ZMAI/IS_Bot/./high_level_controll/run_grasp_gen.py", line 231, in move_cartesian                                                             
+                           notification_handle = self.base.OnNotificationActionTopic(                                                                                                  
+                         File "/home/cuhk/miniconda3/envs/isbot/lib/python3.10/site-packages/kortex_api/autogen/client_stubs/BaseClientRpc.py", line 1016, in                          
+                       OnNotificationActionTopic                                                                                                                                       
+                           future = self.router.send(reqPayload, 1, BaseFunctionUid.uidOnNotificationActionTopic, deviceId, options)                                                   
+                         File "/home/cuhk/miniconda3/envs/isbot/lib/python3.10/site-packages/kortex_api/RouterClient.py", line 70, in send                                             
+                           self.transport.send(payloadMsgFrame)                                                                                                                        
+                         File "/home/cuhk/miniconda3/envs/isbot/lib/python3.10/site-packages/kortex_api/TCPTransport.py", line 85, in send                                             
+                           raise ex                                                                                                                                                    
+                         File "/home/cuhk/miniconda3/envs/isbot/lib/python3.10/site-packages/kortex_api/TCPTransport.py", line 80, in send                                             
+                           self.sock.sendall(payload)                                                                                                                                  
+                       BrokenPipeError: [Errno 32] 断开的管道                                                                                                                          
+[Errno 32] 断开的管道
+[TCPTransport.send] ERROR: None
+[SessionManager.CloseSession] super().CloseSession() failed with: [Errno 32] 断开的管道
+Traceback (most recent call last):
+  File "/home/cuhk/ZMAI/IS_Bot/./high_level_controll/run_grasp_gen.py", line 580, in <module>
+    main()
+  File "/home/cuhk/ZMAI/IS_Bot/./high_level_controll/run_grasp_gen.py", line 570, in main
+    with utilities.DeviceConnection.createTcpConnection(args) as router:
+  File "/home/cuhk/ZMAI/IS_Bot/high_level_controll/utilities.py", line 76, in __exit__
+    self.transport.disconnect()
+  File "/home/cuhk/miniconda3/envs/isbot/lib/python3.10/site-packages/kortex_api/TCPTransport.py", line 72, in disconnect
+    self.sock.shutdown(socket.SHUT_RDWR)
+OSError: [Errno 107] 传输端点尚未连接
+已中止 (核心已转储)
 
 https://msub.xn--m7r52rosihxm.com/api/v1/client/subscribe?token=36b1d43a3543a98b0c337d3fd0c09a83
