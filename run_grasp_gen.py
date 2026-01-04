@@ -386,7 +386,6 @@ class GraspSystem:
             # 根据物体高度设置深度范围
             depth_margin_back = 0.12   # 向后（远离相机）12cm，略大于物体高度
             depth_margin_front = 0.03  # 向前（靠近相机）3cm，避免过度扩展
-            
             depth_min = max(0.9, obj_depth_median - depth_margin_front)
             depth_max = min(1.1, obj_depth_median + depth_margin_back)
             
