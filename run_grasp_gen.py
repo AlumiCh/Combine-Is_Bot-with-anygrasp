@@ -527,24 +527,27 @@ class GraspSystem:
             logger.warning("[AnyGraspWrapper] 点云为空，无法进行抓取检测")
             return [], None
         
+        # 先执行一次检测
+        obs = self.get_robot_state()
+        action = self.policy.step(obs, point_cloud=points)
+        
+        # 检测完成后可视化（非阻塞）
+        if self.policy.state == 'EXECUTING' and len(self.policy.latest_grasps) > 0:
+            logger.info("\n生成抓取可视化窗口，查看完毕后关闭窗口继续执行...\n")
+            self.visualize_grasps(points, colors, self.policy.latest_grasps)
+            logger.info("\n可视化完成，开始执行抓取动作...\n")
+        
+        # 执行动作序列
         step_count = 0
         while step_count < 20:
-            obs = self.get_robot_state()
-            
-            # 策略步进
-            pc_input = points if self.policy.state == 'DETECTING' else None
-            
-            action = self.policy.step(obs, point_cloud=pc_input)
-            
-            # 如果刚刚完成了检测，可视化抓取
-            if self.policy.state == 'EXECUTING' and pc_input is not None:
-                 self.visualize_grasps(points, colors, self.policy.latest_grasps)
-            
             if action == 'end_episode':
                 logger.info("任务完成")
                 break
             
             if action is None:
+                # 继续获取下一个动作
+                obs = self.get_robot_state()
+                action = self.policy.step(obs, point_cloud=None)
                 time.sleep(0.1)
                 continue
                 
@@ -558,6 +561,10 @@ class GraspSystem:
             self.control_gripper(gripper_val)
             
             time.sleep(0.5)
+            
+            # 获取下一个动作
+            obs = self.get_robot_state()
+            action = self.policy.step(obs, point_cloud=None)
 
 def main():
     """
