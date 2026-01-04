@@ -455,7 +455,7 @@ class GraspSystem:
             cloud.colors = o3d.utility.Vector3dVector(colors)
         
         # 应用变换矩阵
-        trans_mat = np.array([[1,0,0,0],[0,1,0,0],[0,0,-1,0],[0,0,0,1]])
+        trans_mat = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]])
         cloud.transform(trans_mat)
         
         # 只显示最高分的抓取（第一个）
@@ -520,9 +520,6 @@ class GraspSystem:
         if len(points) == 0:
             logger.warning("[AnyGraspWrapper] 点云为空，无法进行抓取检测")
             return [], None
-        
-        # 可视化原始点云
-        self.visualize_grasps(points, colors, [])
         
         step_count = 0
         while step_count < 20:
