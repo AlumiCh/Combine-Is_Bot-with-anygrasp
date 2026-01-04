@@ -96,9 +96,7 @@ class GraspSystem:
             model_cfg="configs/sam2.1/sam2.1_hiera_l.yaml"
         )
 
-        # 可视化器
-        self.vis = o3d.visualization.Visualizer()
-        self.vis.create_window()
+
 
     def get_user_prompt(self, rgb):
         """
@@ -400,42 +398,84 @@ class GraspSystem:
         
         return points, colors
     
+    def create_gripper_geometry(self, transform_matrix, gripper_width=0.08, gripper_height=0.02):
+        """
+        创建夹爪几何体模型
+        Args:
+            transform_matrix: 4x4 变换矩阵
+            gripper_width: 夹爪宽度
+            gripper_height: 夹爪高度
+        Returns:
+            list of o3d.geometry: 夹爪几何体列表
+        """
+        # 创建夹爪基座（手掌部分）
+        palm_width = 0.02
+        palm_length = 0.06
+        palm = o3d.geometry.TriangleMesh.create_box(width=palm_width, height=palm_length, depth=gripper_height)
+        palm.translate([-palm_width/2, -palm_length/2, 0])
+        palm.paint_uniform_color([0.1, 0.1, 0.1])  # 深灰色
+        
+        # 创建左手指
+        finger_thickness = 0.005
+        finger_length = 0.04
+        left_finger = o3d.geometry.TriangleMesh.create_box(
+            width=finger_thickness, height=finger_length, depth=gripper_height)
+        left_finger.translate([-gripper_width/2, palm_length/2, 0])
+        left_finger.paint_uniform_color([0.0, 0.5, 1.0])  # 蓝色
+        
+        # 创建右手指
+        right_finger = o3d.geometry.TriangleMesh.create_box(
+            width=finger_thickness, height=finger_length, depth=gripper_height)
+        right_finger.translate([gripper_width/2 - finger_thickness, palm_length/2, 0])
+        right_finger.paint_uniform_color([0.0, 0.5, 1.0])  # 蓝色
+        
+        # 应用变换
+        palm.transform(transform_matrix)
+        left_finger.transform(transform_matrix)
+        right_finger.transform(transform_matrix)
+        
+        return [palm, left_finger, right_finger]
+    
     def visualize_grasps(self, points, colors, grasps):
         """
-        可视化点云和抓取
+        可视化点云和抓取（仅显示最高分抓取）
         Args:
             points: (N, 3) numpy array
             colors: (N, 3) numpy array
             grasps: list of dicts (from policy)
         """
-        self.vis.clear_geometries()
+        if len(grasps) == 0:
+            logger.warning("[visualize_grasps] 未检测到任何抓取，跳过可视化")
+            return
         
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points)
+        # 构建点云
+        cloud = o3d.geometry.PointCloud()
+        cloud.points = o3d.utility.Vector3dVector(points)
         if colors is not None and len(colors) > 0:
-            pcd.colors = o3d.utility.Vector3dVector(colors)
-            
-        self.vis.add_geometry(pcd)
-
-        if grasps:
-            # 仅展示分数最高、即将执行的抓取
-            best_grasp = grasps[0]
-            mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
-
-            T = np.eye(4)
-            T[:3, 3] = best_grasp['arm_pos']
-            r = R.from_quat(best_grasp['arm_quat'])
-            T[:3, :3] = r.as_matrix()
-
-            mesh_frame.transform(T)
-            self.vis.add_geometry(mesh_frame)
-            score = best_grasp.get('score')
-            score_text = f"{score:.4f}" if isinstance(score, (int, float, np.floating)) else "N/A"
-            logger.info(f"可视化最佳抓取: score={score_text}")
-
-        self.vis.poll_events()
-        self.vis.update_renderer()
-        # self.vis.run() # 如果想暂停查看，取消注释
+            cloud.colors = o3d.utility.Vector3dVector(colors)
+        
+        # 应用变换矩阵
+        trans_mat = np.array([[1,0,0,0],[0,1,0,0],[0,0,-1,0],[0,0,0,1]])
+        cloud.transform(trans_mat)
+        
+        # 只显示最高分的抓取（第一个）
+        best_grasp = grasps[0]
+        logger.info(f"[visualize_grasps] 显示最佳抓取，位置: {best_grasp['arm_pos']}")
+        
+        # 构建变换矩阵
+        T = np.eye(4)
+        T[:3, 3] = best_grasp['arm_pos']
+        r = R.from_quat(best_grasp['arm_quat'])
+        T[:3, :3] = r.as_matrix()
+        
+        # 应用相同的变换矩阵
+        T = trans_mat @ T
+        
+        # 创建夹爪几何体
+        gripper_geometries = self.create_gripper_geometry(T)
+        
+        # 使用 draw_geometries 显示（阻塞式）
+        o3d.visualization.draw_geometries([cloud] + gripper_geometries)
 
     def run_episode(self):
         """
