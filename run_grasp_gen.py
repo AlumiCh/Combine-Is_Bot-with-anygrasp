@@ -440,39 +440,45 @@ class GraspSystem:
         """
         可视化点云和抓取（仅显示最高分抓取）
         Args:
-            points: (N, 3) numpy array
+            points: (N, 3) numpy array - 相机坐标系下的点云
             colors: (N, 3) numpy array
-            grasps: list of dicts (from policy)
+            grasps: list of dicts (from policy) - 基座坐标系下的抓取姿态
         """
         if len(grasps) == 0:
             logger.warning("[visualize_grasps] 未检测到任何抓取，跳过可视化")
             return
         
-        # 构建点云
+        # 构建点云（相机坐标系）
         cloud = o3d.geometry.PointCloud()
         cloud.points = o3d.utility.Vector3dVector(points)
         if colors is not None and len(colors) > 0:
             cloud.colors = o3d.utility.Vector3dVector(colors)
         
-        # 应用变换矩阵
-        trans_mat = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]])
+        # 应用变换矩阵（与 anygrasp 一致：翻转Z轴用于可视化）
+        trans_mat = np.array([[1,0,0,0],[0,1,0,0],[0,0,-1,0],[0,0,0,1]])
         cloud.transform(trans_mat)
         
         # 只显示最高分的抓取（第一个）
         best_grasp = grasps[0]
-        logger.info(f"[visualize_grasps] 显示最佳抓取，位置: {best_grasp['arm_pos']}")
+        logger.info(f"[visualize_grasps] 显示最佳抓取，基座坐标系位置: {best_grasp['arm_pos']}")
         
-        # 构建变换矩阵
-        T = np.eye(4)
-        T[:3, 3] = best_grasp['arm_pos']
+        # 抓取姿态从基座坐标系转回相机坐标系用于可视化
+        T_base_grasp = np.eye(4)
+        T_base_grasp[:3, 3] = best_grasp['arm_pos']
         r = R.from_quat(best_grasp['arm_quat'])
-        T[:3, :3] = r.as_matrix()
+        T_base_grasp[:3, :3] = r.as_matrix()
         
-        # 应用相同的变换矩阵
-        T = trans_mat @ T
+        # 逆变换：基座 -> 相机
+        camera_to_base_inv = np.linalg.inv(self.policy.camera_to_base)
+        T_camera_grasp = camera_to_base_inv @ T_base_grasp
+        
+        logger.info(f"[visualize_grasps] 相机坐标系位置: {T_camera_grasp[:3, 3]}")
+        
+        # 应用可视化变换矩阵
+        T_vis = trans_mat @ T_camera_grasp
         
         # 创建夹爪几何体
-        gripper_geometries = self.create_gripper_geometry(T)
+        gripper_geometries = self.create_gripper_geometry(T_vis)
         
         # 使用 draw_geometries 显示（阻塞式）
         o3d.visualization.draw_geometries([cloud] + gripper_geometries)
