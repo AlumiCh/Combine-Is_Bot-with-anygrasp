@@ -91,11 +91,11 @@ class GraspGenPolicy:
         try:
             grasps = self.rpc_client.get_grasps(point_cloud.tolist(), 20)
         except Exception as e:
-            logger.error(f"\nRPC 调用失败: {e}\n")
+            logger.error(f"RPC 调用失败: {e}")
             return None
 
         if not grasps:
-            logger.warning("\nGraspGen 未返回任何抓取\n")
+            logger.warning("GraspGen 未返回任何抓取")
             return None
 
         logger.info(f"收到 {len(grasps)} 个抓取候选")
@@ -104,7 +104,7 @@ class GraspGenPolicy:
         selected_grasp = self._select_best_grasp(grasps)
 
         if selected_grasp is None:
-            logger.warning("\n没有找到合适的可达抓取\n")
+            logger.warning("没有找到合适的可达抓取")
             return None
 
         # 生成动作序列
@@ -140,9 +140,9 @@ class GraspGenPolicy:
             euler_xyz = r.as_euler('xyz', degrees=True)
             roll_x = euler_xyz[0]
 
-            # 过滤掉方向向上的抓取
-            if not (-90 <= roll_x <= 90):
-                continue
+            # # 过滤掉方向向上的抓取
+            # if not (roll_x < -90 or roll_x > 90):
+            #     continue
 
             # 构造一个包含必要信息的字典返回
             quat = r.as_quat()  # [x, y, z, w]
@@ -160,6 +160,7 @@ class GraspGenPolicy:
             
         # 按分数降序排序
         processed_grasps.sort(key=lambda x: x['score'], reverse=True)
+
         return processed_grasps[0]
 
     def _generate_action_sequence(self, grasp_pose, obs):
