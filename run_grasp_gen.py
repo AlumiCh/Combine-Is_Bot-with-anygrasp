@@ -416,22 +416,23 @@ class GraspSystem:
             pcd.colors = o3d.utility.Vector3dVector(colors)
             
         self.vis.add_geometry(pcd)
-        
-        for grasp in grasps:
-            # 创建抓取坐标系或模型
-            # 画一个坐标轴
-            mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-                size=0.1, origin=[0, 0, 0])
-            
-            # 构建变换矩阵
+
+        if grasps:
+            # 仅展示分数最高、即将执行的抓取
+            best_grasp = grasps[0]
+            mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+
             T = np.eye(4)
-            T[:3, 3] = grasp['arm_pos']
-            r = R.from_quat(grasp['arm_quat'])
+            T[:3, 3] = best_grasp['arm_pos']
+            r = R.from_quat(best_grasp['arm_quat'])
             T[:3, :3] = r.as_matrix()
-            
+
             mesh_frame.transform(T)
             self.vis.add_geometry(mesh_frame)
-            
+            score = best_grasp.get('score')
+            score_text = f"{score:.4f}" if isinstance(score, (int, float, np.floating)) else "N/A"
+            logger.info(f"可视化最佳抓取: score={score_text}")
+
         self.vis.poll_events()
         self.vis.update_renderer()
         # self.vis.run() # 如果想暂停查看，取消注释
