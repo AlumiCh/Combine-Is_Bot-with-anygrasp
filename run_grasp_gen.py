@@ -361,8 +361,8 @@ class GraspSystem:
         # 生成分割点云的掩码
         mask_seg = self.seg_model.segment(rgb, point_coords=prompt_points, point_labels=prompt_labels)
 
-        # 显示分割结果
-        cv2.imshow("Mask", (mask_seg * 255).astype(np.uint8)); cv2.waitKey(1)
+        # 显示原始分割结果
+        # cv2.imshow("Original Mask", (mask_seg * 255).astype(np.uint8)); cv2.waitKey(1)
         
         # 生成点云
         xmap, ymap = np.arange(depth.shape[1]), np.arange(depth.shape[0])
@@ -378,8 +378,53 @@ class GraspSystem:
         else:
             logger.warning("\n[_rgbd_to_pointcloud] 深度图全为0！\n")
         
-        # 创建有效点mask
-        mask = (points_z > 0.9) & (points_z < 1.1) & mask_seg
+        seg_depth = depth[mask_seg]
+        if len(seg_depth) > 0 and seg_depth.max() > 0:
+            # 计算物体中心深度（使用中位数）
+            obj_depth_median = np.median(seg_depth[seg_depth > 0])
+            
+            # 根据物体高度设置深度范围
+            depth_margin_back = 0.12   # 向后（远离相机）12cm，略大于物体高度
+            depth_margin_front = 0.03  # 向前（靠近相机）3cm，避免过度扩展
+            
+            depth_min = max(0.9, obj_depth_median - depth_margin_front)
+            depth_max = min(1.1, obj_depth_median + depth_margin_back)
+            
+            # 对mask进行适度膨胀以捕获侧面
+            # 使用椭圆核进行膨胀，核大小根据物体在图像中的大小自适应
+            mask_area = mask_seg.sum()
+            # 根据mask面积估算合适的膨胀核大小
+            if mask_area > 5000:  # 大物体
+                kernel_size = 25
+            elif mask_area > 2000:  # 中等物体
+                kernel_size = 20
+            else:  # 小物体
+                kernel_size = 15
+            
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+            mask_dilated = cv2.dilate(mask_seg.astype(np.uint8), kernel, iterations=1).astype(bool)
+            
+            # 结合深度过滤：只保留物体高度范围内的点
+            depth_mask = (points_z >= depth_min) & (points_z <= depth_max) & (points_z > 0)
+            mask_final = mask_dilated & depth_mask
+            
+            # # 进一步过滤桌面：移除明显属于桌面的点
+            # table_depth_approx = 1.0  # 桌面深度
+            # mask_above_table = points_z < (table_depth_approx + 0.02)  # 保留桌面上方2cm内的点
+            # mask_final = mask_final & mask_above_table
+            
+            # 显示扩展后的mask
+            cv2.imshow("Expanded Mask", (mask_final * 255).astype(np.uint8)); cv2.waitKey(1)
+            
+            logger.info(f"[点云扩展] 物体中心深度: {obj_depth_median:.3f}m")
+            logger.info(f"[点云扩展] 深度过滤范围: [{depth_min:.3f}, {depth_max:.3f}]m")
+            logger.info(f"[点云扩展] Mask面积: {mask_area}, 使用核大小: {kernel_size}x{kernel_size}")
+            logger.info(f"[点云扩展] 原始点数: {mask_seg.sum()}, 扩展后: {mask_final.sum()}")
+            
+            mask = mask_final
+        else:
+            logger.warning("[点云扩展] 分割区域无有效深度，使用原始mask")
+            mask = mask_seg & (points_z > 0)
         
         # 提取有效点和颜色
         points = np.stack([points_x, points_y, points_z], axis=-1)
