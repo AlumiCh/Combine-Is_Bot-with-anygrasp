@@ -378,59 +378,19 @@ class GraspSystem:
         else:
             logger.warning("\n[_rgbd_to_pointcloud] 深度图全为0！\n")
         
-        mask_area = mask_seg.sum()
-        if mask_area > 50:  # 确保有足够的初始分割区域
-            # 根据物体大小自适应选择膨胀核
-            if mask_area > 5000:  # 大物体
-                kernel_size = 25
-            elif mask_area > 2000:  # 中等物体
-                kernel_size = 20
-            else:  # 小物体
-                kernel_size = 15
-            
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-            mask_dilated = cv2.dilate(mask_seg.astype(np.uint8), kernel, iterations=1).astype(bool)
-            
-            # 移除明显的背景（深度差异过大）
-            # 计算分割区域的深度分布
-            seg_depth = depth[mask_seg]
-            if len(seg_depth) > 0 and seg_depth.max() > 0:
-                seg_depth_valid = seg_depth[seg_depth > 0]
-                seg_depth_median = np.median(seg_depth_valid)
-                seg_depth_std = np.std(seg_depth_valid)
-                
-                # 允许在中位数±15cm范围内的点（覆盖物体+部分桌面）
-                depth_tolerance = 0.15  # 15cm容差
-                valid_depth_mask = np.abs(points_z - seg_depth_median) < depth_tolerance
-                
-                # 结合膨胀mask和深度容差
-                mask_final = mask_dilated & valid_depth_mask & (points_z > 0)
-                
-                logger.info(f"[点云扩展] 分割区域深度中位数: {seg_depth_median:.3f}m")
-                logger.info(f"[点云扩展] 深度容差范围: [{seg_depth_median-depth_tolerance:.3f}, {seg_depth_median+depth_tolerance:.3f}]m")
-            else:
-                # 如果分割区域深度无效，直接使用膨胀mask
-                mask_final = mask_dilated & (points_z > 0)
-                logger.warning("[点云扩展] 分割区域深度信息不足，仅使用膨胀mask")
-            
-            # 显示对比
-            # cv2.imshow("Original Mask", (mask_seg * 255).astype(np.uint8))
-            # cv2.imshow("Dilated Mask", (mask_dilated * 255).astype(np.uint8))
-            # cv2.imshow("Final Mask", (mask_final * 255).astype(np.uint8))
-            # cv2.waitKey(1)
-            
-            logger.info(f"[点云扩展] Mask面积: {mask_area}, 核大小: {kernel_size}x{kernel_size}")
-            logger.info(f"[点云扩展] 原始点数: {int(mask_seg.sum())}, 膨胀后: {int(mask_dilated.sum())}, 最终: {int(mask_final.sum())}")
-            
-            mask = mask_final
-        else:
-            logger.warning(f"[点云扩展] 分割区域太小（{mask_area} px），使用原始mask")
-            mask = mask_seg & (points_z > 0)
-        
+        # 只使用原始分割掩码，并确保深度有效
+        mask = mask_seg & (points_z > 0.9) & (points_z < 1.1)
+
+        mask_test = (points_z > 0.9) & (points_z < 1.1)  # 用于调试的测试掩码
+
         # 提取有效点和颜色
         points = np.stack([points_x, points_y, points_z], axis=-1)
+        points_0 = points.copy()  # 备份用于调试
+        points_0 = points_0[mask_test].astype(np.float32)
         points = points[mask].astype(np.float32)
         colors = rgb.astype(np.float32) / 255.0 # 归一化
+        colors_0 = colors.copy()  # 备份用于调试
+        colors_0 = colors_0[mask_test].astype(np.float32)
         colors = colors[mask].astype(np.float32)
 
         # 检查点云是否为空
@@ -442,7 +402,7 @@ class GraspSystem:
                        f"y=[{points[:, 1].min():.3f}, {points[:, 1].max():.3f}], "
                        f"z=[{points[:, 2].min():.3f}, {points[:, 2].max():.3f}]")
         
-        return points, colors
+        return points, colors, points_0, colors_0
     
     def create_gripper_geometry(self, transform_matrix, gripper_width=0.08, gripper_height=0.02):
         """
@@ -484,7 +444,7 @@ class GraspSystem:
     
     def visualize_grasps(self, points, colors, grasps):
         """
-        可视化点云和抓取（仅显示最高分抓取）
+        可视化点云和抓取（显示前 20 个抓取）
         Args:
             points: (N, 3) numpy array - 相机坐标系下的点云
             colors: (N, 3) numpy array
@@ -504,28 +464,29 @@ class GraspSystem:
         trans_mat = np.array([[1,0,0,0],[0,1,0,0],[0,0,-1,0],[0,0,0,1]])
         cloud.transform(trans_mat)
         
-        # 只显示最高分的抓取（第一个）
-        best_grasp = grasps[0]
-        logger.info(f"[visualize_grasps] 显示最佳抓取，基座坐标系位置: {best_grasp['arm_pos']}")
-        
-        # 抓取姿态从基座坐标系转回相机坐标系用于可视化
-        T_base_grasp = np.eye(4)
-        T_base_grasp[:3, 3] = best_grasp['arm_pos']
-        r = R.from_quat(best_grasp['arm_quat'])
-        T_base_grasp[:3, :3] = r.as_matrix()
-        
-        # 逆变换：基座 -> 相机
         camera_to_base_inv = np.linalg.inv(self.policy.camera_to_base)
-        T_camera_grasp = camera_to_base_inv @ T_base_grasp
+        gripper_geometries = []
         
-        logger.info(f"[visualize_grasps] 相机坐标系位置: {T_camera_grasp[:3, 3]}")
-        
-        # 应用可视化变换矩阵
-        T_vis = trans_mat @ T_camera_grasp
-        
-        # 创建夹爪几何体
-        gripper_geometries = self.create_gripper_geometry(T_vis)
-        
+        # 显示前 20 个抓取
+        display_num = min(len(grasps), 20)
+        logger.info(f"[visualize_grasps] 正在可视化前 {display_num} 个抓取候选...")
+
+        for i in range(display_num):
+            grasp = grasps[i]
+            # 抓取姿态从基座坐标系转回相机坐标系用于可视化
+            T_base_grasp = np.eye(4)
+            T_base_grasp[:3, 3] = grasp['arm_pos']
+            r = R.from_quat(grasp['arm_quat'])
+            T_base_grasp[:3, :3] = r.as_matrix()
+            
+            T_camera_grasp = camera_to_base_inv @ T_base_grasp
+            
+            # 应用可视化变换矩阵
+            T_vis = trans_mat @ T_camera_grasp
+            
+            # 创建并平展夹爪几何体列表
+            gripper_geometries.extend(self.create_gripper_geometry(T_vis))
+
         # 使用 draw_geometries 显示（阻塞式）
         o3d.visualization.draw_geometries([cloud] + gripper_geometries)
 
@@ -566,7 +527,7 @@ class GraspSystem:
             return [], None
 
         # 生成点云
-        points, colors = self._rgbd_to_pointcloud(rgb, depth, points_prompt, labels_prompt)
+        points, colors, points_0, colors_0 = self._rgbd_to_pointcloud(rgb, depth, points_prompt, labels_prompt)
 
         # 检查点云是否为空
         if len(points) == 0:
@@ -576,6 +537,8 @@ class GraspSystem:
         # 先执行一次检测
         obs = self.get_robot_state()
         action = self.policy.step(obs, point_cloud=points)
+
+        self.visualize_grasps(points_0, colors_0, self.policy.latest_grasps)  # 可视化原始点云用于调试
         
         # 检测完成后可视化（非阻塞）
         if self.policy.state == 'EXECUTING' and len(self.policy.latest_grasps) > 0:
