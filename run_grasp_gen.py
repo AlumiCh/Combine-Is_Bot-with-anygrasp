@@ -36,7 +36,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("rich")
 
-TIMEOUT_DURATION = 20
+TIMEOUT_DURATION = 60
 
 # 全局变量用于鼠标回调
 selected_points = []
@@ -78,9 +78,9 @@ class GraspSystem:
         
         # 初始化策略
         camera_to_base = np.array([ 
-            [0, 1, 0, 0.54],
+            [0, 1, 0, 0.58],
             [1, 0, 0, 0.11],
-            [0, 0, -1, 0.97],
+            [0, 0, -1, 0.99],
             [0, 0, 0, 1]
         ])
         
@@ -500,12 +500,12 @@ class GraspSystem:
         bottom_points[:, 1] -= height/2                      # Y: 居中对齐
         bottom_points[:, 2] -= finger_width + depth_base     # Z: 与手指底部对齐
         
-        # 尾部：沿Z轴正方向延伸（接近方向的反向），用于指示姿态
+        # 尾部：从底座向后延伸（接近方向的反向），用于指示姿态
         tail_points = np.array(tail.vertices)
         tail_triangles = np.array(tail.triangles) + 24       # 顶点索引偏移
         tail_points[:, 0] -= finger_width / 2                # X: 居中
         tail_points[:, 1] -= height / 2                      # Y: 居中对齐
-        tail_points[:, 2] += 0                               # Z: 从原点向正方向延伸
+        tail_points[:, 2] -= (finger_width + depth_base + tail_length)  # Z: 从底座向负方向延伸
         
         # === 合并所有顶点和三角面 ===
         vertices = np.concatenate([left_points, right_points, bottom_points, tail_points], axis=0)
@@ -555,7 +555,7 @@ class GraspSystem:
         gripper_geometries = []
         
         # 显示前 20 个抓取
-        display_num = min(len(grasps), 20)
+        display_num = min(len(grasps), 1)
         logger.info(f"[visualize_grasps] 正在可视化前 {display_num} 个抓取候选...")
 
         for i in range(display_num):
