@@ -85,7 +85,16 @@ class GraspGenPolicy:
             logger.warning("未提供点云数据，无法进行抓取检测")
             return None
 
-        logger.info(f"发送点云数据 ({len(point_cloud)} points) 到 GraspGen...")
+        # === 调试：打印点云统计信息 ===
+        pc_min = point_cloud.min(axis=0)
+        pc_max = point_cloud.max(axis=0)
+        pc_mean = point_cloud.mean(axis=0)
+        logger.info(f"[调试] 点云统计信息:")
+        logger.info(f"  数量: {len(point_cloud)} points")
+        logger.info(f"  范围: x=[{pc_min[0]:.3f}, {pc_max[0]:.3f}], y=[{pc_min[1]:.3f}, {pc_max[1]:.3f}], z=[{pc_min[2]:.3f}, {pc_max[2]:.3f}]")
+        logger.info(f"  中心: [{pc_mean[0]:.3f}, {pc_mean[1]:.3f}, {pc_mean[2]:.3f}]")
+        
+        logger.info(f"发送点云数据到 GraspGen...")
         
         # 调用 RPC 获取抓取
         try:
@@ -129,6 +138,12 @@ class GraspGenPolicy:
             # 获取相机坐标系下的位姿矩阵
             T_camera_grasp = np.array(grasp['matrix'])
             
+            # === 调试：打印第一个抓取的原始信息 ===
+            if i == 0:
+                camera_grasp_pos = T_camera_grasp[:3, 3]
+                logger.info(f"[调试] GraspGen返回的抓取位置（相机坐标系）: [{camera_grasp_pos[0]:.3f}, {camera_grasp_pos[1]:.3f}, {camera_grasp_pos[2]:.3f}]")
+                logger.info(f"[调试] 抓取评分: {grasp['score']:.3f}")
+            
             # 转换到基座坐标系
             T_base_grasp = self.camera_to_base @ T_camera_grasp
             
@@ -138,8 +153,8 @@ class GraspGenPolicy:
             
             # 记录第一个抓取的变换结果
             if i == 0:
-                logger.info(f"[坐标变换调试] 基座坐标系抓取位置: {position}")
-                logger.info(f"[坐标变换调试] camera_to_base变换矩阵:\n{self.camera_to_base}")
+                logger.info(f"[调试] 变换后抓取位置（基座坐标系）: [{position[0]:.3f}, {position[1]:.3f}, {position[2]:.3f}]")
+                logger.info(f"[调试] camera_to_base平移部分: {self.camera_to_base[:3, 3]}")
             # 将旋转矩阵转换为欧拉角（xyz 顺序，单位度）
             r = R.from_matrix(rotation_matrix)
             euler_xyz = r.as_euler('xyz', degrees=True)
