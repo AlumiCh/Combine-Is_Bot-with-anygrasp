@@ -404,43 +404,115 @@ class GraspSystem:
         
         return points, colors, points_0, colors_0
     
-    def create_gripper_geometry(self, transform_matrix, gripper_width=0.08, gripper_height=0.02):
+    def create_gripper_geometry(self, center, rotation_matrix, width=0.08, depth=0.05, score=1.0):
         """
-        创建夹爪几何体模型
+        创建夹爪几何体模型（AnyGrasp 风格）
+        
+        参考 AnyGrasp 的 plot_gripper_pro_max 方法，创建由4个部分组成的夹爪：
+        - 左手指（left finger）：沿接近方向延伸
+        - 右手指（right finger）：与左手指对称
+        - 底座（bottom）：连接两个手指的基座
+        - 尾部（tail）：延伸至夹爪后方，用于表示接近方向
+        
         Args:
-            transform_matrix: 4x4 变换矩阵
-            gripper_width: 夹爪宽度
-            gripper_height: 夹爪高度
+            center: numpy array (3,) - 夹爪中心点坐标（相机坐标系）
+            rotation_matrix: numpy array (3,3) - 夹爪旋转矩阵
+            width: float - 夹爪开口宽度（两手指之间的距离），默认 8cm
+            depth: float - 手指深度（沿接近方向的长度），默认 5cm
+            score: float - 抓取质量评分 (0-1)，用于颜色编码
+                          1.0 = 红色（高质量），0.0 = 蓝色（低质量）
+        
         Returns:
-            list of o3d.geometry: 夹爪几何体列表
+            o3d.geometry.TriangleMesh - 合并后的夹爪网格模型
         """
-        # 创建夹爪基座（手掌部分）
-        palm_width = 0.02
-        palm_length = 0.06
-        palm = o3d.geometry.TriangleMesh.create_box(width=palm_width, height=palm_length, depth=gripper_height)
-        palm.translate([-palm_width/2, -palm_length/2, 0])
-        palm.paint_uniform_color([0.1, 0.1, 0.1])  # 深灰色
+        # === 几何参数定义 ===
+        height = 0.004              # 夹爪厚度（Z方向）
+        finger_width = 0.004        # 手指宽度（垂直于开口方向）
+        tail_length = 0.04          # 尾部长度（用于指示接近方向）
+        depth_base = 0.02           # 底座深度（基座部分的额外长度）
         
-        # 创建左手指
-        finger_thickness = 0.005
-        finger_length = 0.04
-        left_finger = o3d.geometry.TriangleMesh.create_box(
-            width=finger_thickness, height=finger_length, depth=gripper_height)
-        left_finger.translate([-gripper_width/2, palm_length/2, 0])
-        left_finger.paint_uniform_color([0.0, 0.5, 1.0])  # 蓝色
+        # === 颜色计算（基于抓取评分）===
+        # score 接近 1：红色（高质量抓取）
+        # score 接近 0：蓝色（低质量抓取）
+        color_r = score             # 红色分量随 score 增加
+        color_g = 0                 # 绿色分量为0
+        color_b = 1 - score         # 蓝色分量随 score 减少
         
-        # 创建右手指
-        right_finger = o3d.geometry.TriangleMesh.create_box(
-            width=finger_thickness, height=finger_length, depth=gripper_height)
-        right_finger.translate([gripper_width/2 - finger_thickness, palm_length/2, 0])
-        right_finger.paint_uniform_color([0.0, 0.5, 1.0])  # 蓝色
+        # === 创建4个基础几何体 ===
+        # 注意：create_box(width, height, depth) 创建的box在原点，尺寸为 [width, height, depth]
+        left = o3d.geometry.TriangleMesh.create_box(
+            depth + depth_base + finger_width,  # X方向：手指长度 + 底座长度
+            finger_width,                        # Y方向：手指宽度
+            height                               # Z方向：厚度
+        )
         
-        # 应用变换
-        palm.transform(transform_matrix)
-        left_finger.transform(transform_matrix)
-        right_finger.transform(transform_matrix)
+        right = o3d.geometry.TriangleMesh.create_box(
+            depth + depth_base + finger_width,  # 与左手指相同
+            finger_width,
+            height
+        )
         
-        return [palm, left_finger, right_finger]
+        bottom = o3d.geometry.TriangleMesh.create_box(
+            finger_width,     # X方向：底座宽度
+            width,            # Y方向：夹爪开口宽度
+            height            # Z方向：厚度
+        )
+        
+        tail = o3d.geometry.TriangleMesh.create_box(
+            tail_length,      # X方向：尾部长度
+            finger_width,     # Y方向：尾部宽度
+            height            # Z方向：厚度
+        )
+        
+        # === 调整各部分的局部坐标（相对于夹爪中心）===
+        
+        # 左手指：位于夹爪左侧，沿X轴负方向延伸
+        left_points = np.array(left.vertices)
+        left_triangles = np.array(left.triangles)
+        left_points[:, 0] -= depth_base + finger_width       # X: 向后偏移（远离接近方向）
+        left_points[:, 1] -= width/2 + finger_width          # Y: 向左偏移（负Y方向）
+        left_points[:, 2] -= height/2                        # Z: 居中对齐
+        
+        # 右手指：位于夹爪右侧，与左手指对称
+        right_points = np.array(right.vertices)
+        right_triangles = np.array(right.triangles) + 8      # 顶点索引偏移（避免冲突）
+        right_points[:, 0] -= depth_base + finger_width      # X: 与左手指相同
+        right_points[:, 1] += width/2                        # Y: 向右偏移（正Y方向）
+        right_points[:, 2] -= height/2                       # Z: 居中对齐
+        
+        # 底座：连接两手指，位于夹爪基座位置
+        bottom_points = np.array(bottom.vertices)
+        bottom_triangles = np.array(bottom.triangles) + 16   # 顶点索引偏移
+        bottom_points[:, 0] -= finger_width + depth_base     # X: 与手指对齐
+        bottom_points[:, 1] -= width/2                       # Y: 从左手指延伸到右手指
+        bottom_points[:, 2] -= height/2                      # Z: 居中对齐
+        
+        # 尾部：延伸至夹爪后方，指示接近方向的反向
+        tail_points = np.array(tail.vertices)
+        tail_triangles = np.array(tail.triangles) + 24       # 顶点索引偏移
+        tail_points[:, 0] -= tail_length + finger_width + depth_base  # X: 向后延伸
+        tail_points[:, 1] -= finger_width / 2                # Y: 居中
+        tail_points[:, 2] -= height/2                        # Z: 居中对齐
+        
+        # === 合并所有顶点和三角面 ===
+        vertices = np.concatenate([left_points, right_points, bottom_points, tail_points], axis=0)
+        triangles = np.concatenate([left_triangles, right_triangles, bottom_triangles, tail_triangles], axis=0)
+        
+        # === 应用旋转和平移变换 ===
+        # 先旋转（相对于原点），再平移到目标中心点
+        vertices = np.dot(rotation_matrix, vertices.T).T + center
+        
+        # === 设置顶点颜色 ===
+        # 所有顶点使用统一的颜色（基于抓取评分）
+        colors = np.array([[color_r, color_g, color_b] for _ in range(len(vertices))])
+        
+        # === 构建最终的网格对象 ===
+        gripper = o3d.geometry.TriangleMesh()
+        gripper.vertices = o3d.utility.Vector3dVector(vertices)
+        gripper.triangles = o3d.utility.Vector3iVector(triangles)
+        gripper.vertex_colors = o3d.utility.Vector3dVector(colors)
+        
+        return gripper
     
     def visualize_grasps(self, points, colors, grasps):
         """
@@ -479,13 +551,28 @@ class GraspSystem:
             r = R.from_quat(grasp['arm_quat'])
             T_base_grasp[:3, :3] = r.as_matrix()
             
+            # 逆变换：基座坐标系 -> 相机坐标系
             T_camera_grasp = camera_to_base_inv @ T_base_grasp
             
-            # 应用可视化变换矩阵
+            # 应用可视化变换矩阵（翻转Z轴）
             T_vis = trans_mat @ T_camera_grasp
             
-            # 创建并平展夹爪几何体列表
-            gripper_geometries.extend(self.create_gripper_geometry(T_vis))
+            # 提取中心点和旋转矩阵
+            center = T_vis[:3, 3]
+            rotation = T_vis[:3, :3]
+            
+            # 归一化 score 到 [0, 1] 范围（假设原始 score 也在此范围）
+            score = grasp.get('score', 1.0)
+            
+            # 创建夹爪几何体（AnyGrasp 风格，返回单个 mesh）
+            gripper_mesh = self.create_gripper_geometry(
+                center=center,
+                rotation_matrix=rotation,
+                width=0.08,      # 夹爪开口宽度 8cm
+                depth=0.05,      # 手指深度 5cm
+                score=score      # 抓取评分用于颜色编码
+            )
+            gripper_geometries.append(gripper_mesh)
 
         # 使用 draw_geometries 显示（阻塞式）
         o3d.visualization.draw_geometries([cloud] + gripper_geometries)
