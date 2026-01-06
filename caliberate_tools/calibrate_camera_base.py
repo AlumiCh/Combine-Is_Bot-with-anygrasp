@@ -39,27 +39,59 @@ def solve_transformation(P_camera, P_base):
     
     return T
 
+def flange_to_tool(positions, rotations_deg, offset=0.13):
+    """
+    根据法兰坐标和姿态计算工具末端(接触点)坐标
+    positions: (N, 3) 法兰位置 [x, y, z]
+    rotations_deg: (N, 3) 法兰姿态 [ThetaX, ThetaY, ThetaZ] (单位: 度)
+    offset: 偏移长度，默认 0.13m
+    """
+    from scipy.spatial.transform import Rotation as R
+    tool_points = []
+    for pos, orient in zip(positions, rotations_deg):
+        # Kinova Gen3 Web UI 显示的是 Euler XYZ 角度 (Intrinsic)
+        rot_matrix = R.from_euler('xyz', orient, degrees=True).as_matrix()
+        # 在 Kinova/GraspGen 坐标系中，Z 轴 (第2列) 是接近方向
+        approach_direction = rot_matrix[:, 2]
+        # 计算接触点坐标
+        tool_pos = pos + offset * approach_direction
+        tool_points.append(tool_pos)
+    return np.array(tool_points)
+
 if __name__ == "__main__":
-    # --- 请在此处输入你记录的数据 ---
-    # 建议至少取 4 个点，点分布越广、不共面，效果越好
-    
-    # P_camera: 在相机点云中看到的点的坐标 (x, y, z)
+    # --- 1. 相机数据 (从 get_click_points_3d.py 中获取) ---
     points_camera = np.array([
-        [0.10, -0.20, 0.95], 
-        [0.30, -0.20, 0.96],
-        [0.10,  0.10, 0.94],
-        [0.25,  0.05, 0.85]
+        [0.106, -0.279, 0.808], 
+        [0.306, -0.279, 0.815],
+        [0.106,  0.102, 0.810],
+        [0.256,  0.052, 0.812]
     ])
     
-    # P_base: 机器人移动到对应位置处，指尖接触点的底座坐标 (x, y, z)
-    # 注意：如果你之前算出夹爪长度偏移是 0.13m，那么 P_base 应该是 机器人法兰坐标 + 0.13m*接近方向
-    points_base = np.array([
-        [0.55, 0.12, 0.02],
-        [0.56, -0.08, 0.01],
-        [0.42, 0.11, 0.03],
-        [0.48, -0.02, 0.12]
+    # --- 2. 机械臂数据 (从 Kinova Web UI 或 API 读取) ---
+    # 法兰中心位置 [x, y, z] (米)
+    flange_pos = np.array([
+        [0.450, 0.120, 0.150],
+        [0.460, -0.080, 0.155],
+        [0.320, 0.110, 0.148],
+        [0.380, -0.020, 0.152]
     ])
+    # 法兰姿态 [ThetaX, ThetaY, ThetaZ] (度)
+    flange_ori = np.array([
+        [180.0, 0.0, 90.0],
+        [180.0, 0.0, 90.0],
+        [180.0, 0.0, 90.0],
+        [180.0, 0.0, 90.0]
+    ])
+
+    # 自动计算工具末端坐标 (P_base)
+    # 逻辑：法兰位置 + 0.13m * 接近方向向量
+    points_base = flange_to_tool(flange_pos, flange_ori, offset=0.13)
     
+    print("\n[计算] 得到的工具末端 (接触点) 坐标:")
+    for i, p in enumerate(points_base):
+        print(f"  点 {i+1}: {p}")
+
+    # 执行 Kabsch 算法求解变换矩阵
     T_cam_to_base = solve_transformation(points_camera, points_base)
     
     print("\n=== 计算得到的相机到底座变换矩阵 (camera_to_base) ===")
