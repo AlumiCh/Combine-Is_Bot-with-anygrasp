@@ -78,9 +78,9 @@ class GraspSystem:
         
         # 初始化策略
         camera_to_base = np.array([ 
-            [0, 1, 0, 0.57],
-            [1, 0, 0, 0.09],
-            [0, 0, -1, 1.01],
+            [0, 1, 0, 0.54],
+            [1, 0, 0, 0.11],
+            [0, 0, -1, 0.97],
             [0, 0, 0, 1]
         ])
         
@@ -387,7 +387,7 @@ class GraspSystem:
             depth_margin_back = 0.12   # 向后（远离相机）12cm，略大于物体高度
             depth_margin_front = 0.03  # 向前（靠近相机）3cm，避免过度扩展
             depth_min = max(0.9, obj_depth_median - depth_margin_front)
-            depth_max = min(1.1, obj_depth_median + depth_margin_back)
+            depth_max = min(1.2, obj_depth_median + depth_margin_back)
             
             # 对mask进行适度膨胀以捕获侧面
             # 使用椭圆核进行膨胀，核大小根据物体在图像中的大小自适应
@@ -413,7 +413,7 @@ class GraspSystem:
             # mask_final = mask_final & mask_above_table
             
             # 显示扩展后的mask
-            cv2.imshow("Expanded Mask", (mask_final * 255).astype(np.uint8)); cv2.waitKey(1)
+            # cv2.imshow("Expanded Mask", (mask_final * 255).astype(np.uint8)); cv2.waitKey(1)
             
             logger.info(f"[点云扩展] 物体中心深度: {obj_depth_median:.3f}m")
             logger.info(f"[点云扩展] 深度过滤范围: [{depth_min:.3f}, {depth_max:.3f}]m")
