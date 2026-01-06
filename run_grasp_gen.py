@@ -406,17 +406,23 @@ class GraspSystem:
     
     def create_gripper_geometry(self, center, rotation_matrix, width=0.08, depth=0.05, score=1.0):
         """
-        创建夹爪几何体模型（AnyGrasp 风格）
+        创建夹爪几何体模型（适配 GraspGen 坐标系）
         
-        参考 AnyGrasp 的 plot_gripper_pro_max 方法，创建由4个部分组成的夹爪：
-        - 左手指（left finger）：沿接近方向延伸
-        - 右手指（right finger）：与左手指对称
-        - 底座（bottom）：连接两个手指的基座
-        - 尾部（tail）：延伸至夹爪后方，用于表示接近方向
+        **重要：坐标系定义差异**
+        - AnyGrasp: X轴 = 接近方向，Y轴 = 开口方向
+        - GraspGen: Z轴 = 接近方向，X轴和Y轴构成夹爪姿态
+        - Kinova Gen3: Z轴 = 末端工具接近方向（与GraspGen一致）
+        
+        本方法参考 AnyGrasp 的 plot_gripper_pro_max 几何结构，但适配 GraspGen/Kinova 的坐标系：
+        - 左手指：沿Z轴负方向延伸（接近方向）
+        - 右手指：与左手指对称
+        - 底座：连接两个手指
+        - 尾部：沿Z轴正方向延伸（指示接近方向的反向）
         
         Args:
             center: numpy array (3,) - 夹爪中心点坐标（相机坐标系）
             rotation_matrix: numpy array (3,3) - 夹爪旋转矩阵
+                             rotation_matrix[:, 2] 是 Z轴（接近方向）
             width: float - 夹爪开口宽度（两手指之间的距离），默认 8cm
             depth: float - 手指深度（沿接近方向的长度），默认 5cm
             score: float - 抓取质量评分 (0-1)，用于颜色编码
@@ -426,9 +432,9 @@ class GraspSystem:
             o3d.geometry.TriangleMesh - 合并后的夹爪网格模型
         """
         # === 几何参数定义 ===
-        height = 0.004              # 夹爪厚度（Z方向）
-        finger_width = 0.004        # 手指宽度（垂直于开口方向）
-        tail_length = 0.04          # 尾部长度（用于指示接近方向）
+        height = 0.004              # 夹爪厚度（Y方向，垂直于开口和接近方向）
+        finger_width = 0.004        # 手指宽度（X方向，开口方向的垂直方向）
+        tail_length = 0.04          # 尾部长度（用于指示接近方向的反向）
         depth_base = 0.02           # 底座深度（基座部分的额外长度）
         
         # === 颜色计算（基于抓取评分）===
@@ -439,66 +445,75 @@ class GraspSystem:
         color_b = 1 - score         # 蓝色分量随 score 减少
         
         # === 创建4个基础几何体 ===
-        # 注意：create_box(width, height, depth) 创建的box在原点，尺寸为 [width, height, depth]
+        # 注意：create_box(width, height, depth) 创建box，尺寸为 [X, Y, Z]
+        # 我们的坐标系：Z轴=接近方向，X轴=开口方向，Y轴=厚度方向
+        
+        # 左手指：沿Z轴负方向（接近方向）延伸，位于X轴负侧
         left = o3d.geometry.TriangleMesh.create_box(
-            depth + depth_base + finger_width,  # X方向：手指长度 + 底座长度
-            finger_width,                        # Y方向：手指宽度
-            height                               # Z方向：厚度
+            finger_width,                        # X方向：手指宽度
+            height,                              # Y方向：厚度
+            depth + depth_base + finger_width   # Z方向：手指长度 + 底座长度
         )
         
+        # 右手指：与左手指对称
         right = o3d.geometry.TriangleMesh.create_box(
-            depth + depth_base + finger_width,  # 与左手指相同
             finger_width,
-            height
+            height,
+            depth + depth_base + finger_width
         )
         
+        # 底座：连接两个手指，沿X轴（开口方向）延伸
         bottom = o3d.geometry.TriangleMesh.create_box(
-            finger_width,     # X方向：底座宽度
-            width,            # Y方向：夹爪开口宽度
-            height            # Z方向：厚度
+            width,            # X方向：夹爪开口宽度
+            height,           # Y方向：厚度
+            finger_width      # Z方向：底座厚度
         )
         
+        # 尾部：沿Z轴正方向延伸（接近方向的反向，用于可视化）
         tail = o3d.geometry.TriangleMesh.create_box(
-            tail_length,      # X方向：尾部长度
-            finger_width,     # Y方向：尾部宽度
-            height            # Z方向：厚度
+            finger_width,     # X方向：尾部宽度
+            height,           # Y方向：厚度
+            tail_length       # Z方向：尾部长度
         )
         
         # === 调整各部分的局部坐标（相对于夹爪中心）===
+        # 坐标系：Z轴负向 = 接近方向，X轴 = 开口方向，Y轴 = 厚度方向
         
-        # 左手指：位于夹爪左侧，沿X轴负方向延伸
+        # 左手指：位于X轴负侧，沿Z轴负方向延伸
         left_points = np.array(left.vertices)
         left_triangles = np.array(left.triangles)
-        left_points[:, 0] -= depth_base + finger_width       # X: 向后偏移（远离接近方向）
-        left_points[:, 1] -= width/2 + finger_width          # Y: 向左偏移（负Y方向）
-        left_points[:, 2] -= height/2                        # Z: 居中对齐
+        left_points[:, 0] -= width/2 + finger_width          # X: 向左偏移（负X方向）
+        left_points[:, 1] -= height/2                        # Y: 居中对齐
+        left_points[:, 2] -= depth_base + finger_width       # Z: 向接近方向偏移
         
-        # 右手指：位于夹爪右侧，与左手指对称
+        # 右手指：位于X轴正侧，与左手指对称
         right_points = np.array(right.vertices)
         right_triangles = np.array(right.triangles) + 8      # 顶点索引偏移（避免冲突）
-        right_points[:, 0] -= depth_base + finger_width      # X: 与左手指相同
-        right_points[:, 1] += width/2                        # Y: 向右偏移（正Y方向）
-        right_points[:, 2] -= height/2                       # Z: 居中对齐
+        right_points[:, 0] += width/2                        # X: 向右偏移（正X方向）
+        right_points[:, 1] -= height/2                       # Y: 居中对齐
+        right_points[:, 2] -= depth_base + finger_width      # Z: 与左手指相同
         
         # 底座：连接两手指，位于夹爪基座位置
         bottom_points = np.array(bottom.vertices)
         bottom_triangles = np.array(bottom.triangles) + 16   # 顶点索引偏移
-        bottom_points[:, 0] -= finger_width + depth_base     # X: 与手指对齐
-        bottom_points[:, 1] -= width/2                       # Y: 从左手指延伸到右手指
-        bottom_points[:, 2] -= height/2                      # Z: 居中对齐
+        bottom_points[:, 0] -= width/2                       # X: 从左手指延伸到右手指
+        bottom_points[:, 1] -= height/2                      # Y: 居中对齐
+        bottom_points[:, 2] -= finger_width + depth_base     # Z: 与手指底部对齐
         
-        # 尾部：延伸至夹爪后方，指示接近方向的反向
+        # 尾部：沿Z轴正方向延伸（接近方向的反向），用于指示姿态
         tail_points = np.array(tail.vertices)
         tail_triangles = np.array(tail.triangles) + 24       # 顶点索引偏移
-        tail_points[:, 0] -= tail_length + finger_width + depth_base  # X: 向后延伸
-        tail_points[:, 1] -= finger_width / 2                # Y: 居中
-        tail_points[:, 2] -= height/2                        # Z: 居中对齐
+        tail_points[:, 0] -= finger_width / 2                # X: 居中
+        tail_points[:, 1] -= height / 2                      # Y: 居中对齐
+        tail_points[:, 2] += 0                               # Z: 从原点向正方向延伸
         
         # === 合并所有顶点和三角面 ===
         vertices = np.concatenate([left_points, right_points, bottom_points, tail_points], axis=0)
         triangles = np.concatenate([left_triangles, right_triangles, bottom_triangles, tail_triangles], axis=0)
         
         # === 应用旋转和平移变换 ===
+        # rotation_matrix 是 GraspGen/Kinova 坐标系的旋转矩阵
+        # rotation_matrix[:, 2] 是 Z轴，指向接近方向
         # 先旋转（相对于原点），再平移到目标中心点
         vertices = np.dot(rotation_matrix, vertices.T).T + center
         
@@ -561,7 +576,7 @@ class GraspSystem:
             center = T_vis[:3, 3]
             rotation = T_vis[:3, :3]
             
-            # 归一化 score 到 [0, 1] 范围（假设原始 score 也在此范围）
+            # 归一化 score 到 [0, 1] 范围
             score = grasp.get('score', 1.0)
             
             # 创建夹爪几何体（AnyGrasp 风格，返回单个 mesh）
