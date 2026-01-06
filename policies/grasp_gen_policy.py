@@ -134,6 +134,13 @@ class GraspGenPolicy:
             dict or None: 最佳抓取的末端执行器位姿字典（包含 arm_pos, arm_quat, score），或 None。
         """
         processed_grasps = []
+        
+        # === Robotiq 2F-85 夹爪TCP偏移 ===
+        # GraspGen返回的是夹爪base_frame的位置，但实际接触点在前方
+        # 根据 robotiq_2f_85.yaml 的 contact_points，z坐标约为 0.13m
+        # 我们需要沿接近方向（Z轴）前移，使夹爪指尖到达抓取点
+        TCP_OFFSET = 0.13  # 米，夹爪base到接触点的距离
+        
         for i, grasp in enumerate(grasps):
             # 获取相机坐标系下的位姿矩阵
             T_camera_grasp = np.array(grasp['matrix'])
@@ -144,8 +151,27 @@ class GraspGenPolicy:
                 logger.info(f"[调试] GraspGen返回的抓取位置（相机坐标系）: [{camera_grasp_pos[0]:.3f}, {camera_grasp_pos[1]:.3f}, {camera_grasp_pos[2]:.3f}]")
                 logger.info(f"[调试] 抓取评分: {grasp['score']:.3f}")
             
+            # === 应用TCP偏移：沿Z轴（接近方向）前移 ===
+            # 提取旋转矩阵和位置
+            rotation_matrix = T_camera_grasp[:3, :3]
+            position = T_camera_grasp[:3, 3]
+            
+            # Z轴方向（接近方向）是旋转矩阵的第三列
+            approach_direction = rotation_matrix[:, 2]
+            
+            # 沿接近方向前移TCP_OFFSET
+            position_corrected = position + TCP_OFFSET * approach_direction
+            
+            # 更新变换矩阵
+            T_camera_grasp_corrected = T_camera_grasp.copy()
+            T_camera_grasp_corrected[:3, 3] = position_corrected
+            
+            if i == 0:
+                logger.info(f"[调试] TCP偏移补偿: 沿Z轴前移 {TCP_OFFSET}m")
+                logger.info(f"[调试] 补偿后抓取位置（相机坐标系）: [{position_corrected[0]:.3f}, {position_corrected[1]:.3f}, {position_corrected[2]:.3f}]")
+            
             # 转换到基座坐标系
-            T_base_grasp = self.camera_to_base @ T_camera_grasp
+            T_base_grasp = self.camera_to_base @ T_camera_grasp_corrected
             
             # 提取位置和姿态
             position = T_base_grasp[:3, 3]
