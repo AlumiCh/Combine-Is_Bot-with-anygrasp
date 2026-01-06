@@ -378,21 +378,9 @@ class GraspSystem:
         else:
             logger.warning("\n[_rgbd_to_pointcloud] 深度图全为0！\n")
         
-        seg_depth = depth[mask_seg]
-        if len(seg_depth) > 0 and seg_depth.max() > 0:
-            # 计算物体中心深度（使用中位数）
-            obj_depth_median = np.median(seg_depth[seg_depth > 0])
-            
-            # 根据物体高度设置深度范围
-            depth_margin_back = 0.12   # 向后（远离相机）12cm，略大于物体高度
-            depth_margin_front = 0.03  # 向前（靠近相机）3cm，避免过度扩展
-            depth_min = max(0.9, obj_depth_median - depth_margin_front)
-            depth_max = min(1.2, obj_depth_median + depth_margin_back)
-            
-            # 对mask进行适度膨胀以捕获侧面
-            # 使用椭圆核进行膨胀，核大小根据物体在图像中的大小自适应
-            mask_area = mask_seg.sum()
-            # 根据mask面积估算合适的膨胀核大小
+        mask_area = mask_seg.sum()
+        if mask_area > 50:  # 确保有足够的初始分割区域
+            # 根据物体大小自适应选择膨胀核
             if mask_area > 5000:  # 大物体
                 kernel_size = 25
             elif mask_area > 2000:  # 中等物体
@@ -403,26 +391,40 @@ class GraspSystem:
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
             mask_dilated = cv2.dilate(mask_seg.astype(np.uint8), kernel, iterations=1).astype(bool)
             
-            # 结合深度过滤：只保留物体高度范围内的点
-            depth_mask = (points_z >= depth_min) & (points_z <= depth_max) & (points_z > 0)
-            mask_final = mask_dilated & depth_mask
+            # 移除明显的背景（深度差异过大）
+            # 计算分割区域的深度分布
+            seg_depth = depth[mask_seg]
+            if len(seg_depth) > 0 and seg_depth.max() > 0:
+                seg_depth_valid = seg_depth[seg_depth > 0]
+                seg_depth_median = np.median(seg_depth_valid)
+                seg_depth_std = np.std(seg_depth_valid)
+                
+                # 允许在中位数±15cm范围内的点（覆盖物体+部分桌面）
+                depth_tolerance = 0.15  # 15cm容差
+                valid_depth_mask = np.abs(points_z - seg_depth_median) < depth_tolerance
+                
+                # 结合膨胀mask和深度容差
+                mask_final = mask_dilated & valid_depth_mask & (points_z > 0)
+                
+                logger.info(f"[点云扩展] 分割区域深度中位数: {seg_depth_median:.3f}m")
+                logger.info(f"[点云扩展] 深度容差范围: [{seg_depth_median-depth_tolerance:.3f}, {seg_depth_median+depth_tolerance:.3f}]m")
+            else:
+                # 如果分割区域深度无效，直接使用膨胀mask
+                mask_final = mask_dilated & (points_z > 0)
+                logger.warning("[点云扩展] 分割区域深度信息不足，仅使用膨胀mask")
             
-            # # 进一步过滤桌面：移除明显属于桌面的点
-            # table_depth_approx = 1.0  # 桌面深度
-            # mask_above_table = points_z < (table_depth_approx + 0.02)  # 保留桌面上方2cm内的点
-            # mask_final = mask_final & mask_above_table
+            # 显示对比
+            # cv2.imshow("Original Mask", (mask_seg * 255).astype(np.uint8))
+            # cv2.imshow("Dilated Mask", (mask_dilated * 255).astype(np.uint8))
+            # cv2.imshow("Final Mask", (mask_final * 255).astype(np.uint8))
+            # cv2.waitKey(1)
             
-            # 显示扩展后的mask
-            # cv2.imshow("Expanded Mask", (mask_final * 255).astype(np.uint8)); cv2.waitKey(1)
-            
-            logger.info(f"[点云扩展] 物体中心深度: {obj_depth_median:.3f}m")
-            logger.info(f"[点云扩展] 深度过滤范围: [{depth_min:.3f}, {depth_max:.3f}]m")
-            logger.info(f"[点云扩展] Mask面积: {mask_area}, 使用核大小: {kernel_size}x{kernel_size}")
-            logger.info(f"[点云扩展] 原始点数: {mask_seg.sum()}, 扩展后: {mask_final.sum()}")
+            logger.info(f"[点云扩展] Mask面积: {mask_area}, 核大小: {kernel_size}x{kernel_size}")
+            logger.info(f"[点云扩展] 原始点数: {int(mask_seg.sum())}, 膨胀后: {int(mask_dilated.sum())}, 最终: {int(mask_final.sum())}")
             
             mask = mask_final
         else:
-            logger.warning("[点云扩展] 分割区域无有效深度，使用原始mask")
+            logger.warning(f"[点云扩展] 分割区域太小（{mask_area} px），使用原始mask")
             mask = mask_seg & (points_z > 0)
         
         # 提取有效点和颜色
