@@ -77,7 +77,7 @@ class HighLevelGraspController:
         生成通知回调函数，用于检测异步动作是否结束或被中止。
 
         Args:
-            e (threading.Event): 线程事件对象，当动作结束时会被 set()。
+            e (threading.Event): 线程事件对象，当动作结束或中止时会被 set()。
 
         Returns:
             function: 符合 Kortex API 要求的通知回调函数。
@@ -85,6 +85,8 @@ class HighLevelGraspController:
 
         def check(notification, e=e):
             # 检查通知事件是否为“动作结束”或“动作中止”
+            event_name = "ACTION_END" if notification.action_event == Base_pb2.ACTION_END else "ACTION_ABORT"
+            logger.info(f"收到通知: {event_name}")
             if notification.action_event == Base_pb2.ACTION_END or notification.action_event == Base_pb2.ACTION_ABORT:
                 e.set()
         return check
