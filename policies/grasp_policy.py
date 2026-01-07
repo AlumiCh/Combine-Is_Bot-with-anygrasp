@@ -159,6 +159,14 @@ class GraspPolicy(Policy):
             if reachable:
                 logger.info(f"找到可达抓取: 第 {i+1} 个")
                 # 将转换后的位姿保存到抓取字典中
+
+                #===============================================================
+                # 为了适配高精度的齐次变换矩阵，将抓取往接近方向前移若干厘米
+                r = Rotation.from_quat(quaternion)
+                approach_vector = r.apply([0, 0, 1]) # 获取 Z 轴向量
+                position = position + 0.06 * approach_vector
+                #===============================================================
+
                 grasp['ee_position'] = position
                 grasp['ee_quaternion'] = quaternion
                 return grasp
