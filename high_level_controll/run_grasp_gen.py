@@ -192,6 +192,8 @@ class GraspSystem:
 
         def check(notification, e=e):
             # 检查通知事件是否为“动作结束”或“动作中止”
+            event_name = "ACTION_END" if notification.action_event == Base_pb2.ACTION_END else "ACTION_ABORT"
+            logger.info(f"收到通知: {event_name}")
             if notification.action_event == Base_pb2.ACTION_END or notification.action_event == Base_pb2.ACTION_ABORT:
                 e.set()
         return check
