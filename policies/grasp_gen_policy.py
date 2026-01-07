@@ -139,7 +139,7 @@ class GraspGenPolicy:
         # GraspGen返回的是夹爪base_frame的位置，但实际接触点在前方
         # 根据 robotiq_2f_85.yaml 的 contact_points，z坐标约为 0.13m
         # 我们需要沿接近方向（Z轴）前移，使夹爪指尖到达抓取点
-        TCP_OFFSET = 0.13  # 米，夹爪base到接触点的距离
+        TCP_OFFSET = 0.13 + 0.06  # 米，夹爪base到接触点的距离,此处加上 0.05 是为了适配高精度的齐次变换矩阵，将抓取往接近方向前移若干厘米
         
         for i, grasp in enumerate(grasps):
             # 获取相机坐标系下的位姿矩阵
@@ -183,7 +183,7 @@ class GraspGenPolicy:
                 # logger.info(f"[调试] camera_to_base平移部分: {self.camera_to_base[:3, 3]}")
 
             # 剔除过低的抓取
-            if position[2] < 0.02:
+            if position[2] < 0.03:
                 continue
 
             # 将旋转矩阵转换为欧拉角（xyz 顺序，单位度）
